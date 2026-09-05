@@ -20,5 +20,48 @@ services:
     ports:
       - "127.0.0.1:${SMTP_PORT:-1025}:1025"
       - "127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025"
+  api:
+    profiles: [app]
+    build:
+      context: .
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_ACCESS_TTL: ${JWT_ACCESS_TTL:-15m}
+      JWT_REFRESH_TTL: ${JWT_REFRESH_TTL:-14d}
+      SPRING_PROFILES_ACTIVE: local
+      SERVER_PORT: 8080
+      COOKIE_SECURE: "false"
+      CORS_ALLOWED_ORIGIN: ${DOCKER_WEB_ORIGIN:-http://localhost:5173}
+      FRONTEND_URL: ${DOCKER_WEB_ORIGIN:-http://localhost:5173}
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      MAIL_FROM: ${MAIL_FROM:-noreply@tanidikvar.local}
+      STORAGE_DIRECTORY: /app/storage
+    ports:
+      - "127.0.0.1:${SERVER_PORT:-8080}:8080"
+    volumes:
+      - api_storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+  web:
+    profiles: [app]
+    build:
+      context: ${WEB_BUILD_CONTEXT:-../tanidikvar-app-web}
+      args:
+        VITE_API_BASE_URL: /
+    environment:
+      API_UPSTREAM: http://api:8080
+    ports:
+      - "127.0.0.1:${DOCKER_WEB_PORT:-5173}:80"
+    depends_on:
+      api:
+        condition: service_healthy
 volumes:
+  api_storage:
   postgres_data:

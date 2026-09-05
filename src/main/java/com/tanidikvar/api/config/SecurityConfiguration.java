@@ -22,6 +22,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import tools.jackson.databind.ObjectMapper;
 
 @Configuration
+@org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity
 public class SecurityConfiguration {
     @Bean
     SecurityFilterChain security(HttpSecurity http, ObjectMapper mapper, @Qualifier("corsConfigurationSource") CorsConfigurationSource corsSource,
@@ -42,6 +43,10 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/api/health", "/api/auth/csrf", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
                                 "/api/auth/resend-verification", "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/universities", "/api/universities/*/departments", "/api/departments", "/api/tags").permitAll()
+                        .requestMatchers("/api/manager/**").hasRole("MANAGER")
+                        .requestMatchers(HttpMethod.POST, "/api/tags").hasAnyRole("ADMIN","MANAGER")
+                        .requestMatchers("/api/me/profile").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/me").authenticated()
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors

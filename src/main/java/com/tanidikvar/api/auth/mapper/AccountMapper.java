@@ -7,9 +7,11 @@ import org.springframework.stereotype.Component;
 
 @Component
 public class AccountMapper {
+    private final com.tanidikvar.api.profile.service.ProfileSummaryService profiles;
+    public AccountMapper(com.tanidikvar.api.profile.service.ProfileSummaryService profiles) { this.profiles=profiles; }
     public CurrentUserResponse toResponse(Account account) {
-        // Educational profiles are introduced in the next delivery.
-        String role = account.getAuthority() == Authority.MEMBER ? "USER" : account.getAuthority().name();
-        return new CurrentUserResponse(account.getId(), account.getEmail(), role, false);
+        var education = profiles.status(account.getId());
+        String role = account.getAuthority() == Authority.MEMBER ? (education==null ? "USER" : education.name()) : account.getAuthority().name();
+        return new CurrentUserResponse(account.getId(), account.getEmail(), role, education!=null);
     }
 }

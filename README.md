@@ -2,6 +2,32 @@
 
 Bağımsız backend reposu: Java 21 hedefi, Spring Boot, PostgreSQL ve Flyway. Başka bir uygulama klasörüne veya üst klasördeki ayarlara ihtiyaç duymaz.
 
+## Tek komutla Docker
+
+Docker Desktop ve Python 3 açık/kurulu olsun. API reposunda:
+
+```bash
+./run.sh --docker
+```
+
+PostgreSQL, Mailpit, API ve web birlikte derlenir/başlatılır; servislerin health kontrolü beklenir. Web http://localhost:5173, API http://localhost:8080, e-postalar http://localhost:8025. Java/Node kurulumu Docker çalıştırması için gerekmez. Web Nginx üzerinden aynı origin `/api` yoluna bağlanır.
+
+Web repo varsayılan olarak `../tanidikvar-app-web` konumunda aranır. Ayrı bir konumda clone ettiysen API `.env` içine `WEB_BUILD_CONTEXT=/tam/yol/web-reposu` yaz. API/web Dockerfile ve ignore dosyaları kendi repolarındadır; ortak kök dosyası gerekmez. API'yi tek başına kullanmak web reposunu gerektirmez.
+
+`DOCKER_WEB_PORT` farklıysa launcher e-posta/CORS origin'ini otomatik `http://localhost:<port>` yapar. Farklı host kullanacaksan `DOCKER_WEB_ORIGIN` ayarla. Sonraki kod değişiklikleri için aynı komutu tekrar çalıştır; bu Docker akışı derlenmiş uygulamadır, hot reload yapmaz.
+
+Durdurma (veri korunur):
+
+```bash
+docker compose --profile app stop
+```
+
+Loglar: `docker compose logs -f api web`. DB volume aynı `tanidikvar_postgres_data`; container storage `tanidikvar_api_storage` volume'ündedir. Local `.local/storage` ile ayrı dizinlerdir; henüz dosya yükleme verisi yoktur. Production HTTPS/SMTP/deployment ayarları bu yerel Compose akışından ayrıdır.
+
+## Ayrı geliştirme süreçleri
+
+Docker API/web çalışıyorsa önce `docker compose stop api web` ile portları boşalt. Eski geliştirme akışı korunur: API `./run.sh`, web kendi reposunda `npm run dev`.
+
 ## Kurulum ve çalıştırma
 
 Java 21 veya üstü, Python 3 ve çalışan Docker Desktop gerekir. Bu klasörde:
@@ -55,3 +81,25 @@ E-posta DB commit'inden sonra sınırlı bellekiçi iş kuyruğunda SMTP ile gö
 `.env.example` JWT süreleri, `FRONTEND_URL`, `SMTP_*`, `MAIL_FROM` değişkenlerini gösterir. JWT anahtarı en az 32 rastgele baytın Base64 karşılığı olmalıdır; kodda varsayılan secret yoktur. Gerçek `.env` dosyasını paylaşma veya Git'e ekleme.
 
 Auth uçlarında socket IP + işlem başına 15 dakikada 10 istek; refresh için dakikada 60 istek sınırı vardır. `429` yanıtı `Retry-After` taşır. Limiter tek instance belleğindedir, en fazla 10.000 pencere tutar; uygulama yeniden başlayınca sıfırlanır. Forwarded header güvenilmez. Production proxy/çoklu instance politikası yayına hazırlık aşamasındadır.
+
+## Profil ve katalog
+
+- `GET/PUT /api/me/profile`: yalnız kendi profilin; istemciden kullanıcı/otorite atanmaz. Ad/soyad ve eğitim durumu zorunlu; öğrencide üniversite-bölüm, mezunda ayrıca yıl gerekir. Biyografi/meslek/şirket isteğe bağlıdır. Fotoğraf dosyası desteği 9. adımdadır.
+- `GET /api/universities`, `/api/departments`, `/api/tags`, `/api/universities/{id}/departments`: public, aktif kayıtlar, `q/page/size`. Liste cevabı `items/page/size/totalElements`; varsayılan boyut 20, üst sınır 100.
+- `POST /api/tags`: tamamlanmış profilli Admin veya Manager yeni tag oluşturur.
+- `/api/manager/catalog/{kind}`: Manager listeleme/ekleme; `{kind}` UNIVERSITY, DEPARTMENT, TAG. `PUT /{id}` ad günceller; `PUT /{id}/status` `{deleted,version}` ile soft delete/geri yükler. Manager listesinde `includeDeleted=true` kullanılabilir.
+- `/api/manager/university-departments`: Manager `universityId` ile listeleme ve POST eşleştirme; `PUT /{id}/status` soft delete/geri yükleme.
+
+V3 `user_profiles`, `tags`, `management_actions` oluşturur. İlk iki migration değişmez. İsimler Türkçe harf dönüşümü/boşluk normalizasyonuyla unique tutulur; aynı üniversite-bölüm çifti yeniden oluşturulamaz. Yeni seçimde pasif ebeveyn/eşleşme reddedilir; mevcut profilde aynı eğitim referansı korunabilir. Parent geri yükleme bağımsız silinmiş çocuk kaydı geri getirmez.
+
+Profil ve katalog güncellemesinde istemci `version` gönderir. Stale form 409 STALE_VERSION alır; otomatik üzerine yazılmaz. İlk profil için version=0. Profil tamamlama eğitim rolünü günceller; ADMIN/MANAGER yetkisi korunur. InteractionPolicy profil ön koşulunu taşır; yeni soru/cevap mutasyonları sonraki teslimlerde bu kontrolü kullanacaktır.
+
+## İlk Manager
+
+Önce normal kayıt ol ve e-posta adresini doğrula. Sonra bu repo içinde, örnekteki adresi kendi adresinle değiştir:
+
+```bash
+docker compose exec -T postgres psql -U tanidikvar -d tanidikvar -v ON_ERROR_STOP=1 -v manager_email='hesabin@example.com' < scripts/promote-manager.sql
+```
+
+DB kullanıcı/adını değiştirdiysen `-U/-d` değerlerini kendi ayarlarınla eşleştir. Script yalnız belirtilen aktif ve e-postası doğrulanmış hesabı MANAGER yapar; hazır yönetici hesabı veya parola üretmez. Başlangıç yetkilendirmesini audit kaydına yazar. Sayfayı yenileyince `/manager` ekranı açılır. Katalog başlangıçta boş olabilir; önce üniversite ve ortak bölüm ekle, ardından eşleştir.
