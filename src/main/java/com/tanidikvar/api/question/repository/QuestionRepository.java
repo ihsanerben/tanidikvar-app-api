@@ -67,6 +67,20 @@ public class QuestionRepository {
         if(p.containsKey("university"))sql+=" AND u.id=:university";
         if(p.containsKey("education"))sql+=" AND q.university_department_id=:education";
         if(p.containsKey("tag"))sql+=" AND EXISTS (SELECT 1 FROM question_tags qt JOIN tags t ON t.id=qt.tag_id AND t.deleted_at IS NULL WHERE qt.question_id=q.id AND qt.tag_id=:tag AND qt.deleted_at IS NULL)";
+        if(p.containsKey("department"))sql+=" AND d.id=:department";
+        if(p.containsKey("admin"))sql+=" "+"""
+            AND EXISTS (SELECT 1 FROM answers aa JOIN users au ON au.id=aa.author_id AND au.deleted_at IS NULL
+              JOIN user_profiles ap ON ap.user_id=au.id AND ap.deleted_at IS NULL
+              WHERE aa.question_id=q.id AND aa.author_id=:admin AND aa.answer_kind='ADMIN' AND aa.deleted_at IS NULL
+              AND EXISTS (SELECT 1 FROM admin_applications av WHERE av.applicant_id=au.id AND av.status='APPROVED' AND av.deleted_at IS NULL))
+            """;
+        if(p.containsKey("query"))sql+=" "+"""
+            AND (strpos(search_fold(q.title),search_fold(:query))>0 OR strpos(search_fold(q.body),search_fold(:query))>0
+              OR (u.deleted_at IS NULL AND strpos(search_fold(u.name),search_fold(:query))>0)
+              OR (d.deleted_at IS NULL AND strpos(search_fold(d.name),search_fold(:query))>0)
+              OR EXISTS (SELECT 1 FROM question_tags qt JOIN tags t ON t.id=qt.tag_id AND t.deleted_at IS NULL
+                WHERE qt.question_id=q.id AND qt.deleted_at IS NULL AND strpos(search_fold(t.name),search_fold(:query))>0))
+            """;
         return sql;
     }
     public List<Question> list(Map<String,Object> filters,int page,int size) {
@@ -74,4 +88,28 @@ public class QuestionRepository {
         return jdbc.query(SELECT+where(filters)+" ORDER BY q.created_at DESC,q.id DESC LIMIT :limit OFFSET :offset",p,this::map);
     }
     public long count(Map<String,Object> filters) { return jdbc.queryForObject("SELECT count(*) "+FROM+where(filters),filters,Long.class); }
+    private String popularCte(Map<String,Object> filters) {
+        return "WITH eligible AS (SELECT q.id "+FROM+where(filters)+"), "+"""
+            events AS (
+                SELECT v.question_id,v.viewed_at happened,:viewWeight weight FROM question_views v JOIN eligible e ON e.id=v.question_id
+                  WHERE v.deleted_at IS NULL AND v.viewed_at>=:since AND v.viewed_at<:until
+                UNION ALL
+                SELECT l.question_id,l.first_liked_at,:likeWeight FROM question_likes l JOIN eligible e ON e.id=l.question_id
+                  WHERE l.deleted_at IS NULL AND l.first_liked_at>=:since AND l.first_liked_at<:until
+                UNION ALL
+                SELECT a.question_id,a.published_at,CASE WHEN a.answer_kind='ADMIN' THEN :adminWeight ELSE :communityWeight END
+                  FROM answers a JOIN eligible e ON e.id=a.question_id
+                  WHERE a.deleted_at IS NULL AND a.published_at>=:since AND a.published_at<:until
+            ), scores AS (
+                SELECT question_id,sum(weight*(1-EXTRACT(EPOCH FROM (CAST(:until AS timestamptz)-happened))/(2*:seconds))) score
+                FROM events GROUP BY question_id
+            )
+            """;
+    }
+    public List<Question> popular(Map<String,Object> filters,int page,int size) {
+        var p=new HashMap<>(filters);p.put("limit",size);p.put("offset",page*size);
+        return jdbc.query(popularCte(filters)+SELECT+" JOIN scores s ON s.question_id=q.id ORDER BY s.score DESC,q.created_at DESC,q.id DESC LIMIT :limit OFFSET :offset",p,this::map);
+    }
+    public long popularCount(Map<String,Object> filters) {return jdbc.queryForObject(popularCte(filters)+"SELECT count(*) FROM scores",filters,Long.class);}
+
 }

@@ -184,3 +184,18 @@ V8, `question_likes` ve `question_views` tablolarını ekler; V1–V7 değişmez
 Sayaçlar silinmiş etkileşim/cevapları dışlar; silinmiş soru hiçbir public sayaç döndürmez. Etkileşimler soru içerik version değerini değiştirmez. Ayrı sayaç tablosu, ziyaretçi tekilleştirmesi veya popülerlik formülü eklenmedi. Dönem sorguları için aktif soru/zaman ve zaman/soru indexleri hazırdır.
 
 11. adımda `./mvnw verify`: 91 test geçti. Ek 9 test public okuma/CSRF, profil ve sahiplik, tekrar/paralel tekillik, eski sürüm, ilk tarih, arşiv, soft delete, gizli ebeveyn, DB koruması ve transaction rollback davranışlarını doğrular. Admin/topluluk toplamlarının ayrımı da testlidir. OpenAPI 50 uygulama yolu içerir.
+
+
+## Arama ve Popülerler
+
+V9 yalnız `search_fold(text)` fonksiyonu ve görünür cevaplar için dönem indexi ekler; V1–V8 ve katalog tekillik normalizasyonu korunur. PostgreSQL NFKC/büyük-küçük harf/Türkçe harf katlaması `ışık` ve `isik` eşleşmesini sağlar. Metin içerme sorguları kullanılır; `%`/`_` joker değildir, yazım hatası düzeltme yoktur. Katalog seçicileri de bu eşleştirmeyi kullanır.
+
+- `GET /api/questions`: mevcut filtrelere `q`, `departmentId`, `adminId` eklendi. q başlık/açıklama/aktif üniversite/bölüm/tag adlarında aranır. Filtreler birlikte uygulanır; normal sıra en yeni önce.
+- `GET /api/popular`: aynı filtreler ve `period=DAILY|WEEKLY|MONTHLY|YEARLY` (varsayılan WEEKLY). Pencereler son 24 saat/7 gün/30 gün/365 gündür. Yanıt mevcut PageResponse<QuestionResponse>; kart sayaçları tüm zamanları kapsar.
+- `GET /api/admins?q=...&page=0&size=20`: public profilleri onaylı ad üzerinden arar. Güncel Adminler önce; geçmiş Adminler activeAdmin=false. Silinmiş hesap/profil veya görünür onay geçmişi olmayan kişi listelenmez. Belge/e-posta açılmaz.
+
+Görüntülenme/beğeni/topluluk/Admin katkı ağırlıkları 1/5/10/25. T=istek zamanı, W=pencere saniyesi, t=ilk katkı zamanı için `[T-W,T)` içindeki katkı `ağırlık * (1-(T-t)/(2W))` puan getirir. Katsayı başlangıçta 0,5, yeni katkıda 1’e yaklaşır. Soru yaşı puanı doğrudan etkilemez. Eşit puanda created_at/id azalan sıra; dönemde katkısız veya arşiv/silinmiş soru yoktur. Soft-deleted etkileşim/cevap dışlanır; yeniden etkinleştirme/düzenleme ilk zamanı yenilemez.
+
+Liste, toplam ve toplu kart sayaçları read-only REPEATABLE_READ transaction içinde okunur. Sayfalar ayrı isteklerdir, canlı sıralama değişebilir. Genel event/özet tablosu veya cache eklenmedi. Metin taraması başlangıç için sadedir; büyük veri üzerinde arama indexi ve dönem sorgusu maliyeti yayına hazırlıkta ölçülmelidir.
+
+12. adımda `./mvnw verify`: 101 test geçti. Yeni 10 DiscoveryIT testi Türkçe/literal arama, birleşik filtre, dört pencerenin sınırı, 1/5/10/25 ağırlıklar, doğrusal azaltma, eski soruya yeni katkı, soft delete/arşiv, ilk tarih, eşit puan/sayfalama ve public Admin gizliliğini doğrular. OpenAPI 52 uygulama yoludur. q en fazla 100 karakter; mevcut page 0–10000 ve size 1–100 sınırları korunur.
