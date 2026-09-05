@@ -18,6 +18,24 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(DomainException.class)
+    ResponseEntity<ApiError> domain(DomainException error, HttpServletRequest request) {
+        return ResponseEntity.status(error.status()).body(new ApiError(Instant.now(),error.status(),error.code(),error.getMessage(),request.getRequestURI(),
+                (String)request.getAttribute("requestId"),error.fields()));
+    }
+    @ExceptionHandler(org.springframework.dao.DuplicateKeyException.class)
+    ResponseEntity<ApiError> duplicate(HttpServletRequest request) {
+        return ResponseEntity.status(409).body(ApiErrors.create(request,409,"CATALOG_CONFLICT","Bu kayıt zaten var. Pasif kayıtları da kontrol et."));
+    }
+    @ExceptionHandler(org.springframework.security.access.AccessDeniedException.class)
+    ResponseEntity<ApiError> forbidden(HttpServletRequest request) {
+        return ResponseEntity.status(403).body(ApiErrors.create(request,403,"ACCESS_DENIED","Bu işlem için yetkin yok."));
+    }
+    @ExceptionHandler({org.springframework.web.method.annotation.MethodArgumentTypeMismatchException.class,org.springframework.web.bind.MissingServletRequestParameterException.class})
+    ResponseEntity<ApiError> parameter(HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(ApiErrors.create(request,400,"INVALID_REQUEST","İstek parametrelerini kontrol et."));
+    }
+
     @ExceptionHandler(com.tanidikvar.api.auth.exception.AuthRejectedException.class)
     ResponseEntity<ApiError> authentication(HttpServletRequest request) {
         return ResponseEntity.status(401).body(ApiErrors.create(request, 401, "AUTHENTICATION_REQUIRED", "E-posta veya şifre hatalı ya da oturumun sona erdi."));
