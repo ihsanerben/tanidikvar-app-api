@@ -71,7 +71,7 @@ public class QuestionRepository {
         if(p.containsKey("admin"))sql+=" "+"""
             AND EXISTS (SELECT 1 FROM answers aa JOIN users au ON au.id=aa.author_id AND au.deleted_at IS NULL
               JOIN user_profiles ap ON ap.user_id=au.id AND ap.deleted_at IS NULL
-              WHERE aa.question_id=q.id AND aa.author_id=:admin AND aa.answer_kind='ADMIN' AND aa.deleted_at IS NULL
+              WHERE aa.question_id=q.id AND aa.author_id=:admin AND aa.answer_kind='ADMIN' AND aa.deleted_at IS NULL AND aa.moderated_at IS NULL
               AND EXISTS (SELECT 1 FROM admin_applications av WHERE av.applicant_id=au.id AND av.status='APPROVED' AND av.deleted_at IS NULL))
             """;
         if(p.containsKey("query"))sql+=" "+"""
@@ -99,7 +99,7 @@ public class QuestionRepository {
                 UNION ALL
                 SELECT a.question_id,a.published_at,CASE WHEN a.answer_kind='ADMIN' THEN :adminWeight ELSE :communityWeight END
                   FROM answers a JOIN eligible e ON e.id=a.question_id
-                  WHERE a.deleted_at IS NULL AND a.published_at>=:since AND a.published_at<:until
+                  WHERE a.deleted_at IS NULL AND a.moderated_at IS NULL AND a.published_at>=:since AND a.published_at<:until
             ), scores AS (
                 SELECT question_id,sum(weight*(1-EXTRACT(EPOCH FROM (CAST(:until AS timestamptz)-happened))/(2*:seconds))) score
                 FROM events GROUP BY question_id

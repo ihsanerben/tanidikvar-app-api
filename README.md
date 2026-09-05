@@ -111,7 +111,7 @@ DB kullanıcı/adını değiştirdiysen `-U/-d` değerlerini kendi ayarlarınla 
 - Authenticated `GET /api/me/questions`: yalnız oturum sahibinin soruları; arşivdekiler dahil, soft-deleted kayıtlar hariç.
 - `POST /api/questions`: tamamlanmış profil gerekir. Body `{requestId, content}`; requestId UUID’dir. Aynı kullanıcı/gönderim anahtarı tekrarında aynı soru döner; değiştirilmiş içerikle aynı anahtar 409 REQUEST_CONFLICT alır. Yeni anahtarla aynı başlıkta ayrı soru açılabilir.
 - `PUT /api/questions/{id}`: `{version, content}`; yalnız sahibi ve aktif soru. Admin/Manager başka kullanıcının sorusunu bu uçtan düzenleyemez.
-- `POST /api/questions/{id}/archive`: `{version}`; yalnız sahibi. Arşivleme keşif listesinden çıkarır, bağlantıdan okumayı korur; tekrar arşivleme idempotenttir. Bu teslimde yeniden açma ve Manager moderasyon ucu yoktur.
+- `POST /api/questions/{id}/archive`: `{version}`; yalnız sahibi. Arşivleme keşif listesinden çıkarır, bağlantıdan okumayı korur; tekrar arşivleme idempotenttir. Sahibi için arşivden yeniden açma yoktur; Manager gizleme/geri yükleme uçları aşağıdadır.
 
 `content`: title (10–200 karakter), body (isteğe bağlı, en fazla 5000), scope, universityId, universityDepartmentId, tagIds (0–5 farklı UUID). GENERAL iki eğitim alanını boş; UNIVERSITY yalnız universityId; UNIVERSITY_DEPARTMENT yalnız universityDepartmentId kullanır. Üniversite-bölüm eşleşmesinden üniversite türetilir. Başlık boşlukları normalize edilir, içerik düz metindir.
 
@@ -199,3 +199,22 @@ Görüntülenme/beğeni/topluluk/Admin katkı ağırlıkları 1/5/10/25. T=istek
 Liste, toplam ve toplu kart sayaçları read-only REPEATABLE_READ transaction içinde okunur. Sayfalar ayrı isteklerdir, canlı sıralama değişebilir. Genel event/özet tablosu veya cache eklenmedi. Metin taraması başlangıç için sadedir; büyük veri üzerinde arama indexi ve dönem sorgusu maliyeti yayına hazırlıkta ölçülmelidir.
 
 12. adımda `./mvnw verify`: 101 test geçti. Yeni 10 DiscoveryIT testi Türkçe/literal arama, birleşik filtre, dört pencerenin sınırı, 1/5/10/25 ağırlıklar, doğrusal azaltma, eski soruya yeni katkı, soft delete/arşiv, ilk tarih, eşit puan/sayfalama ve public Admin gizliliğini doğrular. OpenAPI 52 uygulama yoludur. q en fazla 100 karakter; mevcut page 0–10000 ve size 1–100 sınırları korunur.
+
+## Manager paneli ve moderasyon
+
+- `GET /api/manager/statistics`: hesap, başvuru, soru, görünür cevap, beğeni ve detay açılışı toplamları.
+- `GET /api/manager/users`: `q`, `status=ALL|VISIBLE|HIDDEN`, `page`, `size`; Manager’a özel kullanıcı listesi. Parola/token dönmez.
+- `PUT /api/manager/users/{id}/status`: `{hidden,version,reason}`; `hidden=true` hesabı pasifleştirir, `false` geri yükler. Manager hedefleri reddedilir.
+- `GET /api/manager/content`: `kind=QUESTION|COMMUNITY|ADMIN`, `q`, `status=ALL|VISIBLE|HIDDEN`, `page`, `size`.
+- `PUT /api/manager/content/{kind}/{id}/status`: `{hidden,version,reason}`; yalnız görünürlük değişir, metin ve arşiv durumu korunur.
+- `GET /api/manager/actions`: `page`, `size`; gerekçeli yönetim geçmişi.
+
+Tüm uçlar güncel Manager yetkisi ister; mutasyonlar CSRF korumalıdır. Liste varsayılan 20, en fazla 100 kayıt; page en fazla 10000. Arama en fazla 100, gerekçe zorunlu 1–1000 karakterdir. Eski sürüm `409 STALE_VERSION` döndürür; aynı sürüm/hedef durum tekrarı yeni audit üretmez.
+
+V10, `answers.moderated_at` ekler; eski migration’lar ve kayıtlar korunur. Cevap `deleted_at` sahibi tarafından kaldırmayı, `moderated_at` Manager gizlemesini tutar. Public görünürlük için ikisi ve sorunun `deleted_at` alanı boş olmalıdır. Private cevap DTO’larında da `moderatedAt` bulunur; Manager gizlemesi varken sahibi düzenleme/geri yükleme yaparsa `409 ANSWER_MODERATED` alır. Sahibi cevabını ayrıca kaldırabilir. Admin günlük kotası ve ilk yayın zamanı değişmez.
+
+Hesap pasifleştirme aynı transaction’da oturum/aksiyon token’larını iptal eder, Admin yetkisini kaldırır, bekleyen başvuruları reddeder ve audit yazar. Geri yükleme eski oturumları veya Admin yetkisini geri getirmez; eğitim/profil korunur. Aktif olmayan yazar public içerikte Katılımcı olur. Hesap pasifken önceki başvuru/dosya erişim kuralları gereği başvuruları ve dosyaları görünmez; kayıtlar saklanır.
+
+Manager işlemleri için profil tamamlanması gerekmez. Soru/cevap moderasyonu mevcut soru → aktör kilit sırasını kullanır; hesap işlemleri Manager → hedef hesap sırasıyla başvuru kararlarıyla aynı kilidi paylaşır. İşlem geçmişi yazılamazsa tüm değişiklikler rollback olur. İstatistikler tek SQL snapshot’ından hesaplanır; cache/arka plan işi eklenmedi.
+
+Bu teslimde `./mvnw verify`: 111 test başarılı; gerçek PostgreSQL üzerinde 10 yeni yönetim testi dahil. Docker ve OpenAPI doğrulandı.

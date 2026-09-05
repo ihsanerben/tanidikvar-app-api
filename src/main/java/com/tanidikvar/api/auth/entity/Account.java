@@ -33,5 +33,7 @@ public class Account {
     public UUID getActiveVerificationApplicationId() { return activeVerificationApplicationId; }
     public void grantAdmin(UUID verification, Instant now) { authority=Authority.ADMIN; activeVerificationApplicationId=verification; updatedAt=now; }
     public void revokeAdmin(Instant now) { authority=Authority.MEMBER; activeVerificationApplicationId=null; updatedAt=now; }
+    public long getVersion() { return version; }
+    public void setDisabled(boolean disabled, Instant now) { deletedAt=disabled?now:null; updatedAt=now; }
     public boolean isDeleted() { return deletedAt != null; }
 }
