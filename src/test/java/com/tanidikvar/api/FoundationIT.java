@@ -28,6 +28,7 @@ class FoundationIT {
 
     @DynamicPropertySource
     static void database(DynamicPropertyRegistry properties) {
+        properties.add("app.auth.secret", () -> java.util.Base64.getEncoder().encodeToString(new byte[48]));
         properties.add("spring.datasource.url", postgres::getJdbcUrl);
         properties.add("spring.datasource.username", postgres::getUsername);
         properties.add("spring.datasource.password", postgres::getPassword);
@@ -42,7 +43,7 @@ class FoundationIT {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"))
                 .andExpect(jsonPath("$.database").value("up"))
                 .andExpect(header().exists("X-Request-ID"));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(2);
     }
 
     @Test
@@ -74,7 +75,7 @@ class FoundationIT {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.info.title").value("TanıdıkVar API"))
                 .andExpect(jsonPath("$.paths['/api/health']").exists())
                 .andExpect(jsonPath("$.paths['/api/auth/csrf']").exists())
-                .andExpect(jsonPath("$.paths['/api/auth/login']").doesNotExist());
+                .andExpect(jsonPath("$.paths['/api/auth/login']").exists());
     }
 
     @Test

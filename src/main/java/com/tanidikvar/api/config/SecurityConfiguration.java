@@ -2,6 +2,9 @@ package com.tanidikvar.api.config;
 
 import com.tanidikvar.api.common.error.ApiErrors;
 import java.util.List;
+import com.tanidikvar.api.auth.security.*;
+import com.tanidikvar.api.auth.service.AuthenticationService;
+import org.springframework.security.web.csrf.CsrfFilter;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Bean;
@@ -22,12 +25,14 @@ import tools.jackson.databind.ObjectMapper;
 public class SecurityConfiguration {
     @Bean
     SecurityFilterChain security(HttpSecurity http, ObjectMapper mapper, @Qualifier("corsConfigurationSource") CorsConfigurationSource corsSource,
-            @Value("${app.secure-cookies}") boolean secure) throws Exception {
+            @Value("${app.secure-cookies}") boolean secure, AuthenticationService authentication, AuthCookies cookies, AuthRateLimiter limiter) throws Exception {
         var csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrfRepository.setCookieCustomizer(cookie -> cookie.secure(secure).sameSite("Lax").path("/"));
         return http.cors(cors -> cors.configurationSource(corsSource))
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
+                .addFilterAfter(new AuthRateLimitFilter(limiter, mapper), CsrfFilter.class)
+                .addFilterAfter(new CookieAuthenticationFilter(authentication, cookies, mapper), AuthRateLimitFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .requestCache(AbstractHttpConfigurer::disable)
                 .formLogin(AbstractHttpConfigurer::disable)
@@ -35,6 +40,9 @@ public class SecurityConfiguration {
                 .logout(AbstractHttpConfigurer::disable)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.GET, "/api/health", "/api/auth/csrf", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
+                                "/api/auth/resend-verification", "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/me").authenticated()
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors
                         .authenticationEntryPoint((request, response, exception) -> {
