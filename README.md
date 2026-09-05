@@ -127,7 +127,7 @@ Yeni katalog seçimi aktif olmalıdır. Mevcut pasif eğitim/tag referansı düz
 - `PUT /api/answers/{id}`: `{body,version}`; yalnız sahibi, tamamlanmış profil ve aktif soru/cevap. Gerçek metin değişikliğinde editedAt/version güncellenir; publishedAt korunur. Değişmeyen metin no-op’tur.
 - `PUT /api/answers/{id}/status`: `{deleted,version}`; yalnız sahibi ve tamamlanmış profil. Soft delete arşivlenmiş soruda da yapılabilir; geri yükleme yalnız aktif soruda aynı satırdan yapılır. İlk yayın ve son düzenleme tarihleri korunur. Eski version 409 STALE_VERSION döndürür; eski silme isteği yeniden yüklenmiş cevabı gizleyemez.
 
-V5 `answers` tablosunu ekler: `(question_id,author_id,answer_kind)` silinmiş satırlar dahil unique, FK, body/version CHECK ve DELETE/TRUNCATE engeli. Bu aşamada answer_kind yalnız COMMUNITY olabilir; doğrulanmış ADMIN türü, doğrulama FK’sı ve günlük kota 10. adımda yeni migration ile eklenecek. Önceki migration’lar değişmez. Admin/Manager topluluk cevabı verebilir; bu doğrulanmış admin cevabı değildir ve kota tüketmez.
+V5 `answers` tablosunu ekler: `(question_id,author_id,answer_kind)` silinmiş satırlar dahil unique, FK, body/version CHECK ve DELETE/TRUNCATE engeli. V5 başlangıcında answer_kind yalnız COMMUNITY idi; V7 doğrulanmış ADMIN türü, doğrulama FK’sı ve günlük kota desteğini ekler. Önceki migration’lar değişmez. Admin/Manager topluluk cevabı verebilir; bu doğrulanmış admin cevabı değildir ve kota tüketmez.
 
 Bütün cevap mutasyonları soru → kullanıcı sırasıyla kilitlenir. QuestionAccessService soru görünürlüğü/arşiv kilidini diğer feature’lara sunar; cevap servisi başka feature repository’sine bağlanmaz. Arşivleme ile yeni cevap yarışı aynı soru kilidiyle çözülür. Soru soft-deleted ise liste, kendi cevabı ve bütün mutasyonlar 404 döner; çocuk cevap satırı fiziksel silinmez. Silinmiş yazar/profil adı Katılımcı olarak gösterilir. Yeni cevap POST’unun birebir tekrarı arşivde de mevcut satırı okuyabilir; yeni yayın yapamaz.
 
@@ -152,3 +152,21 @@ Dosya dizini `STORAGE_DIRECTORY` (yerel `.local/storage`, Docker `/app/storage` 
 Fotoğraf değişiminde eski içerik ve metadata fiziksel olarak korunur. Production saklama süresi, zararlı PDF taraması, kapasite izleme ve storage yedekleme yayına hazırlık aşamasındadır. Bu sürüm tek instance/private disk kullanır.
 
 Doğrulama: `./mvnw verify` ile 70 test geçti. Yeni 14 test belge sahipliği/Manager sınırı, snapshot, gerçek paralel gönderim/karar/yetki kaldırma, audit rollback, yarım upload kurtarma, fotoğraf dönüşümü, eski dosya erişimi ve fiziksel silme engelini kapsar.
+
+
+## Admin cevapları, atama ve public profil
+
+V7, `question_assignments` ve `answers.verification_application_id` ekler; V1–V6 değişmez. COMMUNITY ve ADMIN aynı soruda/yazarda ayrı tekil kayıtlardır. Admin cevabının ilk yayın kimliği ve onaylı doğrulama bağlantısı değişmez.
+
+- Public `GET /api/questions/{id}/admin-answers`; `POST` aynı yolda `{body}` ile güncel doğrulanmış Admin cevabı yayımlar. Aktif soru, tamamlanmış profil, aktif atama ve günlük hak gerekir.
+- `GET /api/questions/{id}/my-admin-answer`: yalnız kendi cevabın (kaldırılmış dahil) ve atama bilgisi.
+- `PUT /api/questions/{id}/assignment`: `{assigned,version}`; ilk version=0. Atama/iptal hak tüketmez ve cevap silmez.
+- `PUT /api/admin-answers/{id}`: `{body,version}`; güncel Admin kendi görünür cevabını aktif soruda düzenler. Atama veya yeni hak gerekmez.
+- `PUT /api/admin-answers/{id}/status`: `{deleted,version}`. Eski Admin de kendi cevabını kaldırabilir. Restore güncel Admin, aktif soru ve atama gerektirir; ilk yayın/doğrulama ve kota korunur.
+- `GET /api/me/admin-quota`: Türkiye günü, kullanılan/kalan hak, sabit limit=5 ve reset zamanı.
+- `GET /api/me/admin-answers`, `GET /api/me/assignments`: kendi cevap/atama geçmişin, page/size.
+- Public `GET /api/admins/{id}` ve `GET /api/admins/{id}/answers`: güvenli profil ve görünür cevap geçmişi. Eski Admin işaretlenir; silinmiş hesap/profil için profil 404’tür. Belge veya ret bilgisi açılmaz.
+
+Kota ayrı sayaç kullanmaz: aynı Admin’in Türkiye günü içinde ilk yayımladığı ADMIN cevaplarını, soft-deleted satırlar dahil sayar. Soru → kullanıcı kilit sırası paralel altıncı yayını engeller. Aynı yayının tekrarı aynı kaydı döndürür; düzenleme/restore hak tüketmez. Arşivde düzenleme/restore kapalı, kaldırma açıktır. Cevap 10–5000 karakter düz metindir. Tüm listeler size=20 varsayılan, en fazla 100 kullanır.
+
+10. adımda `./mvnw verify`: 82 test geçti; altı paralel soru yayını, aynı soruda çoklu Admin/tekrar, Türkiye gece yarısı, revocation yarışı, rollback, gizli yazar/soru ve FK/soft delete doğrulandı.
