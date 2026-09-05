@@ -77,6 +77,7 @@ class AdminAnswerIT {
   mvc.perform(write("POST","/api/questions/"+q+"/answers",a,Map.of("body","Ayrı topluluk deneyim metnidir."))).andExpect(status().isCreated());
   mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.totalElements").value(1));
   mvc.perform(get(url)).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.items[0].documentFileId").doesNotExist());
+  mvc.perform(get("/api/questions/"+q+"/statistics")).andExpect(jsonPath("$.adminAnswerCount").value(1)).andExpect(jsonPath("$.communityAnswerCount").value(1)).andExpect(jsonPath("$.totalAnswerCount").value(2));
   mvc.perform(write("PUT","/api/answers/"+answer.get("id").asText(),a,Map.of("body","Yanlış türe yazma denemesi","version",0))).andExpect(status().isNotFound());
   mvc.perform(write("PUT",path(answer),b,Map.of("body","Başkasının cevabını değiştirme","version",0))).andExpect(status().isForbidden());
   jdbc.update("UPDATE user_profiles SET deleted_at=clock_timestamp() WHERE user_id=?",a.id());

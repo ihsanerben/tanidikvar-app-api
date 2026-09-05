@@ -14,16 +14,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 @Service
 public class QuestionService {
+    private final com.tanidikvar.api.engagement.service.QuestionStatisticsService statistics;
     private final QuestionRepository questions;
     private final QuestionMapper mapper;
     private final AccountAccessService accounts;
     private final InteractionPolicy interaction;
     private final CatalogService catalog;
-    public QuestionService(QuestionRepository questions,QuestionMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,CatalogService catalog) {
+    public QuestionService(QuestionRepository questions,QuestionMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,CatalogService catalog,com.tanidikvar.api.engagement.service.QuestionStatisticsService statistics) {
+        this.statistics=statistics;
         this.questions=questions;this.mapper=mapper;this.accounts=accounts;this.interaction=interaction;this.catalog=catalog;
     }
     private Question find(UUID id,boolean lock) { return questions.find(id,lock).orElseThrow(()->new DomainException(404,"NOT_FOUND","Soru bulunamadı.")); }
-    private QuestionResponse response(Question q) { return mapper.toResponse(q,questions.tags(List.of(q.id())).getOrDefault(q.id(),List.of())); }
+    private QuestionResponse response(Question q) { return mapper.toResponse(q,questions.tags(List.of(q.id())).getOrDefault(q.id(),List.of()),statistics.get(q.id())); }
     @Transactional(readOnly=true)
     public QuestionResponse get(UUID id) { return response(find(id,false)); }
     @Transactional(readOnly=true)
@@ -33,7 +35,8 @@ public class QuestionService {
         if(actor!=null)filters.put("actor",actor);if(scope!=null)filters.put("scope",scope.name());
         if(university!=null)filters.put("university",university);if(education!=null)filters.put("education",education);if(tag!=null)filters.put("tag",tag);
         var rows=questions.list(filters,page,size);var tags=questions.tags(rows.stream().map(Question::id).toList());
-        return new PageResponse<>(rows.stream().map(q->mapper.toResponse(q,tags.getOrDefault(q.id(),List.of()))).toList(),page,size,questions.count(filters));
+        var summaries=statistics.summaries(rows.stream().map(Question::id).toList());
+        return new PageResponse<>(rows.stream().map(q->mapper.toResponse(q,tags.getOrDefault(q.id(),List.of()),summaries.get(q.id()))).toList(),page,size,questions.count(filters));
     }
     private void actor(UUID id) { accounts.lockActive(id);interaction.requireCompleted(id); }
     private void owner(Question q,UUID actor) {
@@ -73,7 +76,7 @@ public class QuestionService {
         if(existing.isPresent()) {
             var saved=find(existing.get(),false);var tags=questions.tags(List.of(saved.id())).getOrDefault(saved.id(),List.of());
             if(!sameContent(saved,content,tags))throw new DomainException(409,"REQUEST_CONFLICT","Bu gönderim daha önce kaydedilmiş. Sorularım sayfasından kontrol et.");
-            return mapper.toResponse(saved,tags);
+            return mapper.toResponse(saved,tags,statistics.get(saved.id()));
         }
         references(content,null,List.of());
         UUID id=UUID.randomUUID();questions.create(id,actor,request.requestId(),content);questions.tags(id,content.tagIds());

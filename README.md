@@ -170,3 +170,17 @@ V7, `question_assignments` ve `answers.verification_application_id` ekler; V1–
 Kota ayrı sayaç kullanmaz: aynı Admin’in Türkiye günü içinde ilk yayımladığı ADMIN cevaplarını, soft-deleted satırlar dahil sayar. Soru → kullanıcı kilit sırası paralel altıncı yayını engeller. Aynı yayının tekrarı aynı kaydı döndürür; düzenleme/restore hak tüketmez. Arşivde düzenleme/restore kapalı, kaldırma açıktır. Cevap 10–5000 karakter düz metindir. Tüm listeler size=20 varsayılan, en fazla 100 kullanır.
 
 10. adımda `./mvnw verify`: 82 test geçti; altı paralel soru yayını, aynı soruda çoklu Admin/tekrar, Türkiye gece yarısı, revocation yarışı, rollback, gizli yazar/soru ve FK/soft delete doğrulandı.
+
+
+## Beğeni, görüntülenme ve sayaçlar
+
+V8, `question_likes` ve `question_views` tablolarını ekler; V1–V7 değişmez. Her tablo soft delete, version, zaman alanları, FK ve fiziksel DELETE/TRUNCATE engeli taşır. İlk etkileşim zamanı ve kimlik alanları UPDATE trigger ile korunur.
+
+- Public `GET /api/questions/{id}/statistics`: viewCount, likeCount, communityAnswerCount, adminAnswerCount, totalAnswerCount. Aynı `statistics` nesnesi soru liste/detay/oluşturma/güncelleme yanıtlarında da vardır; liste sayfası için tek toplu sayaç sorgusu yapılır.
+- Public `POST /api/questions/{id}/views`: `{openingEventId}` UUID, CSRF zorunlu, başarılı yanıt 204. Aynı açılışın tekrarı no-op; farklı soruda aynı kimlik 409 REQUEST_CONFLICT. Ziyaretçi hesabı/IP/cookie kimliği saklanmaz. Yeni açılış yeni kayıttır; arşiv okununca sayılır, silinmiş soru 404 verir. GET istekleri kayıt yazmaz.
+- Authenticated `GET /api/questions/{id}/like`: yalnız oturum sahibinin `{liked,version}` durumu; hiç kayıt yoksa false/0.
+- `PUT /api/questions/{id}/like`: `{liked,version}`; tamamlanmış profil gerekir. Soru → kullanıcı kilidi ve sürüm kontrolü uygulanır. Geri alma soft delete, yeniden beğenme aynı satırı kullanır ve first_liked_at korunur. Arşivde yalnız geri alma açıktır. Eski sürüm 409 STALE_VERSION alır.
+
+Sayaçlar silinmiş etkileşim/cevapları dışlar; silinmiş soru hiçbir public sayaç döndürmez. Etkileşimler soru içerik version değerini değiştirmez. Ayrı sayaç tablosu, ziyaretçi tekilleştirmesi veya popülerlik formülü eklenmedi. Dönem sorguları için aktif soru/zaman ve zaman/soru indexleri hazırdır.
+
+11. adımda `./mvnw verify`: 91 test geçti. Ek 9 test public okuma/CSRF, profil ve sahiplik, tekrar/paralel tekillik, eski sürüm, ilk tarih, arşiv, soft delete, gizli ebeveyn, DB koruması ve transaction rollback davranışlarını doğrular. Admin/topluluk toplamlarının ayrımı da testlidir. OpenAPI 50 uygulama yolu içerir.
