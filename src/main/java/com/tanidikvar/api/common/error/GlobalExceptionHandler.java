@@ -69,7 +69,11 @@ public class GlobalExceptionHandler {
                 (String) request.getAttribute("requestId"), fields));
     }
 
-    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ExceptionHandler(org.springframework.web.multipart.MaxUploadSizeExceededException.class)
+    ResponseEntity<ApiError> uploadSize(HttpServletRequest request) {
+        return ResponseEntity.status(413).body(ApiErrors.create(request,413,"INVALID_FILE","Dosya boyutu sınırı aşıldı."));
+    }
+    @ExceptionHandler({HttpMessageNotReadableException.class, org.springframework.web.multipart.support.MissingServletRequestPartException.class})
     ResponseEntity<ApiError> unreadable(HttpServletRequest request) {
         return ResponseEntity.badRequest().body(ApiErrors.create(request, 400, "INVALID_REQUEST", "İstek okunamadı."));
     }
