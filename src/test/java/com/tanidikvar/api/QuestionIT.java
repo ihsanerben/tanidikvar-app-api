@@ -150,7 +150,7 @@ class QuestionIT {
         UUID tag=UUID.randomUUID();c.put("tagIds",List.of(tag,tag));mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isBadRequest());
         c.put("tagIds",java.util.stream.IntStream.range(0,6).mapToObj(i->UUID.randomUUID()).toList());mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isBadRequest());
         for(String table:List.of("questions","question_tags"))assertThatThrownBy(()->jdbc.execute("DELETE FROM "+table)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-        assertThatThrownBy(()->jdbc.execute("TRUNCATE questions,question_tags, answers, question_assignments")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(()->jdbc.execute("TRUNCATE question_likes, question_views, questions,question_tags, answers, question_assignments")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
     @Test void failedTagWriteRollsBackQuestionCreation()throws Exception {
         var a=member("MANAGER");var t=create(a,"TAG","Rollback "+UUID.randomUUID());UUID tag=UUID.fromString(t.get("id").asText());

@@ -6,4 +6,4 @@ import java.util.UUID;
 public record QuestionResponse(UUID id, UUID authorId, String authorName, String title, String body,
         QuestionScope scope, UUID universityId, String universityName, UUID universityDepartmentId,
         UUID departmentId, String departmentName, List<QuestionTagResponse> tags,
-        Instant createdAt, Instant editedAt, Instant archivedAt, long version) { }
+        Instant createdAt, Instant editedAt, Instant archivedAt, long version, com.tanidikvar.api.engagement.dto.QuestionStatisticsResponse statistics) { }
