@@ -45,6 +45,8 @@ public class SecurityConfiguration {
                                 "/api/auth/resend-verification", "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/universities", "/api/universities/*/departments", "/api/departments", "/api/tags").permitAll()
                         .requestMatchers("/api/manager/**").hasRole("MANAGER")
+                        .requestMatchers(HttpMethod.GET, "/api/avatars/*").permitAll()
+                        .requestMatchers("/api/me/admin-applications", "/api/me/avatar", "/api/me/avatar/remove", "/api/files/*/download").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/tags").hasAnyRole("ADMIN","MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/questions/*/answers").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/questions/*/my-answer").authenticated()

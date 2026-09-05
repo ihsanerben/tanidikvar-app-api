@@ -84,7 +84,7 @@ Auth uçlarında socket IP + işlem başına 15 dakikada 10 istek; refresh için
 
 ## Profil ve katalog
 
-- `GET/PUT /api/me/profile`: yalnız kendi profilin; istemciden kullanıcı/otorite atanmaz. Ad/soyad ve eğitim durumu zorunlu; öğrencide üniversite-bölüm, mezunda ayrıca yıl gerekir. Biyografi/meslek/şirket isteğe bağlıdır. Fotoğraf dosyası desteği 9. adımdadır.
+- `GET/PUT /api/me/profile`: yalnız kendi profilin; istemciden kullanıcı/otorite atanmaz. Ad/soyad ve eğitim durumu zorunlu; öğrencide üniversite-bölüm, mezunda ayrıca yıl gerekir. Biyografi/meslek/şirket isteğe bağlıdır. Fotoğraf yükleme/kaldırma uçları aşağıda açıklanır.
 - `GET /api/universities`, `/api/departments`, `/api/tags`, `/api/universities/{id}/departments`: public, aktif kayıtlar, `q/page/size`. Liste cevabı `items/page/size/totalElements`; varsayılan boyut 20, üst sınır 100.
 - `POST /api/tags`: tamamlanmış profilli Admin veya Manager yeni tag oluşturur.
 - `/api/manager/catalog/{kind}`: Manager listeleme/ekleme; `{kind}` UNIVERSITY, DEPARTMENT, TAG. `PUT /{id}` ad günceller; `PUT /{id}/status` `{deleted,version}` ile soft delete/geri yükler. Manager listesinde `includeDeleted=true` kullanılabilir.
@@ -130,3 +130,25 @@ Yeni katalog seçimi aktif olmalıdır. Mevcut pasif eğitim/tag referansı düz
 V5 `answers` tablosunu ekler: `(question_id,author_id,answer_kind)` silinmiş satırlar dahil unique, FK, body/version CHECK ve DELETE/TRUNCATE engeli. Bu aşamada answer_kind yalnız COMMUNITY olabilir; doğrulanmış ADMIN türü, doğrulama FK’sı ve günlük kota 10. adımda yeni migration ile eklenecek. Önceki migration’lar değişmez. Admin/Manager topluluk cevabı verebilir; bu doğrulanmış admin cevabı değildir ve kota tüketmez.
 
 Bütün cevap mutasyonları soru → kullanıcı sırasıyla kilitlenir. QuestionAccessService soru görünürlüğü/arşiv kilidini diğer feature’lara sunar; cevap servisi başka feature repository’sine bağlanmaz. Arşivleme ile yeni cevap yarışı aynı soru kilidiyle çözülür. Soru soft-deleted ise liste, kendi cevabı ve bütün mutasyonlar 404 döner; çocuk cevap satırı fiziksel silinmez. Silinmiş yazar/profil adı Katılımcı olarak gösterilir. Yeni cevap POST’unun birebir tekrarı arşivde de mevcut satırı okuyabilir; yeni yayın yapamaz.
+
+
+## Admin başvuruları ve özel dosyalar
+
+- `GET /api/me/admin-applications`: kendi başvuruların; en yeni önce, `page/size` (20 varsayılan, en fazla 100).
+- `POST /api/me/admin-applications`: tek multipart gönderimi; JSON `request` parçası `{requestId,profileVersion}`, PDF `document` parçası. Tamamlanmış öğrenci/mezun profili gerekir. Aynı gönderim anahtarı/profil sürümü/dosya hash’i aynı kaydı döndürür; yalnız bir bekleyen başvuru olabilir.
+- `GET /api/manager/admin-applications`: Manager listesi, isteğe bağlı `status=PENDING|APPROVED|REJECTED`, `page/size`.
+- `PUT /api/manager/admin-applications/{id}/decision`: `{status,reason,version}`. PENDING kabul/ret; ret gerekçesi zorunlu. Kabul ADMIN yetkisi ve aktif doğrulama bağlantısıyla atomiktir.
+- `POST /api/manager/users/{id}/revoke-admin`: `{verificationId,reason}`. Beklenen güncel doğrulamayı kontrol eder, yetkiyi kaldırır ve bekleyen başvuruları gerekçeli ret ile kapatır. Geçmiş onay değişmez. Sonuç 204.
+- `GET /api/files/{id}/download`: yalnız belge sahibi veya Manager. Belge/başvuru/hesap kaldırılmışsa 404; başka Adminler erişemez. PDF attachment, no-store, nosniff ve CSP sandbox ile gönderilir.
+- `GET /api/me/avatar`: `{fileId}`; fotoğraf yoksa null. `POST /api/me/avatar`: multipart `file` ile yükleme/değiştirme. `POST /api/me/avatar/remove`: soft delete, 204. Tamamlanmış profil gerekir.
+- Public `GET /api/avatars/{id}`: aktif hesap/profil ve aktif fotoğraf için PNG; değiştirilen/kaldırılan eski dosyaya erişim kapanır.
+
+Belge PDF ve en fazla 10 MB. PDF başlık/EOF kontrolü temel biçim kontrolüdür; resmi doğrulamayı Manager elle yapar. Fotoğraf JPEG/PNG, en fazla 5 MB ve 16 milyon piksel; ImageIO ile çözümlenip en uzun kenarı 512 piksel olan PNG’ye çevrilir. Orijinal metadata yayımlanmaz. Multipart istek üst sınırı 11 MB; Docker web Nginx sınırı da 11 MB.
+
+V6 `admin_applications`, `stored_files`, `users.active_verification_application_id` ve audit `reason` alanını ekler; V1–V5 değişmez. Snapshot ve tamamlanmış kararlar immutable trigger ile korunur. Sahiplik composite FK, tek bekleyen başvuru ve tek aktif avatar partial unique ile korunur. Kabul/ret/yetki kaldırma aynı kullanıcı kilidi ve tek transaction üzerinden yürür; audit hatasında tamamı geri alınır. Ret eski aktif doğrulamayı değiştirmez. Eski karar sürümü veya değişmiş verificationId 409 döndürür.
+
+Dosya dizini `STORAGE_DIRECTORY` (yerel `.local/storage`, Docker `/app/storage` kalıcı volume). Dosyalar rastgele UUID ile private diske yazılır; orijinal dosya adı dizin/header üretmez. Metadata ayrı transaction’da UPLOADING açılır; başarılı ilişkilendirme READY, hata FAILED + soft delete yapar. Yeni yükleme sırasında bir saatten eski yarım UPLOADING kayıtlar erişime kapalı FAILED durumuna alınır. Süreç kesintisinden sonra otomatik fiziksel dosya silme veya yeniden yayın yoktur. Kullanıcı başına saatte 20 upload kaydı sınırı vardır; bu sayaç DB’de kalır.
+
+Fotoğraf değişiminde eski içerik ve metadata fiziksel olarak korunur. Production saklama süresi, zararlı PDF taraması, kapasite izleme ve storage yedekleme yayına hazırlık aşamasındadır. Bu sürüm tek instance/private disk kullanır.
+
+Doğrulama: `./mvnw verify` ile 70 test geçti. Yeni 14 test belge sahipliği/Manager sınırı, snapshot, gerçek paralel gönderim/karar/yetki kaldırma, audit rollback, yarım upload kurtarma, fotoğraf dönüşümü, eski dosya erişimi ve fiziksel silme engelini kapsar.

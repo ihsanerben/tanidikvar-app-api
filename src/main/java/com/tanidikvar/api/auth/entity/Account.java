@@ -15,6 +15,7 @@ public class Account {
     @Column(nullable = false) private Instant updatedAt;
     private Instant deletedAt;
     private Instant emailVerifiedAt;
+    private UUID activeVerificationApplicationId;
     @Version private long version;
 
     protected Account() { }
@@ -29,5 +30,8 @@ public class Account {
     public String getEmail() { return email; }
     public String getPasswordHash() { return passwordHash; }
     public Authority getAuthority() { return authority; }
+    public UUID getActiveVerificationApplicationId() { return activeVerificationApplicationId; }
+    public void grantAdmin(UUID verification, Instant now) { authority=Authority.ADMIN; activeVerificationApplicationId=verification; updatedAt=now; }
+    public void revokeAdmin(Instant now) { authority=Authority.MEMBER; activeVerificationApplicationId=null; updatedAt=now; }
     public boolean isDeleted() { return deletedAt != null; }
 }
