@@ -254,7 +254,7 @@ class AuthenticationIT {
         for (String table : List.of("users", "auth_sessions", "auth_action_tokens")) {
             assertThatThrownBy(() -> jdbc.execute("DELETE FROM " + table)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         }
-        assertThatThrownBy(() -> jdbc.execute("TRUNCATE users, auth_sessions, auth_action_tokens, user_profiles, tags, management_actions, questions, question_tags"))
+        assertThatThrownBy(() -> jdbc.execute("TRUNCATE users, auth_sessions, auth_action_tokens, user_profiles, tags, management_actions, questions, question_tags, answers"))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
 }
