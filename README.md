@@ -103,3 +103,18 @@ docker compose exec -T postgres psql -U tanidikvar -d tanidikvar -v ON_ERROR_STO
 ```
 
 DB kullanıcı/adını değiştirdiysen `-U/-d` değerlerini kendi ayarlarınla eşleştir. Script yalnız belirtilen aktif ve e-postası doğrulanmış hesabı MANAGER yapar; hazır yönetici hesabı veya parola üretmez. Başlangıç yetkilendirmesini audit kaydına yazar. Sayfayı yenileyince `/manager` ekranı açılır. Katalog başlangıçta boş olabilir; önce üniversite ve ortak bölüm ekle, ardından eşleştir.
+
+## Soru yönetimi
+
+- Public `GET /api/questions`: en yeni aktif sorular; `scope`, `universityId`, `universityDepartmentId`, `tagId`, `page`, `size` filtreleri. Varsayılan size=20, üst sınır 100. Eğitim ve tag filtreleri birlikte uygulanır.
+- Public `GET /api/questions/{id}`: arşivlenmiş soru okunur; soft-deleted soru 404 döner.
+- Authenticated `GET /api/me/questions`: yalnız oturum sahibinin soruları; arşivdekiler dahil, soft-deleted kayıtlar hariç.
+- `POST /api/questions`: tamamlanmış profil gerekir. Body `{requestId, content}`; requestId UUID’dir. Aynı kullanıcı/gönderim anahtarı tekrarında aynı soru döner; değiştirilmiş içerikle aynı anahtar 409 REQUEST_CONFLICT alır. Yeni anahtarla aynı başlıkta ayrı soru açılabilir.
+- `PUT /api/questions/{id}`: `{version, content}`; yalnız sahibi ve aktif soru. Admin/Manager başka kullanıcının sorusunu bu uçtan düzenleyemez.
+- `POST /api/questions/{id}/archive`: `{version}`; yalnız sahibi. Arşivleme keşif listesinden çıkarır, bağlantıdan okumayı korur; tekrar arşivleme idempotenttir. Bu teslimde yeniden açma ve Manager moderasyon ucu yoktur.
+
+`content`: title (10–200 karakter), body (isteğe bağlı, en fazla 5000), scope, universityId, universityDepartmentId, tagIds (0–5 farklı UUID). GENERAL iki eğitim alanını boş; UNIVERSITY yalnız universityId; UNIVERSITY_DEPARTMENT yalnız universityDepartmentId kullanır. Üniversite-bölüm eşleşmesinden üniversite türetilir. Başlık boşlukları normalize edilir, içerik düz metindir.
+
+V4 `questions` ve `question_tags` tablolarını ekler; scope CHECK, FK, unique gönderim anahtarı, birleşik tag PK ve DELETE/TRUNCATE engelleri vardır. V1–V3 değişmez. Soru/tag yazımları tek transaction’dır; düzenleme/arşivleme soru → kullanıcı → katalog sırasıyla kilitlenir, birden fazla tag kimlik sırasıyla kilitlenir. Eski version 409 STALE_VERSION alır. Gerçek içerik değişikliğinde editedAt güncellenir; ilk yayın tarihi korunur. Değişmeyen içerik version/tarih artırmaz.
+
+Yeni katalog seçimi aktif olmalıdır. Mevcut pasif eğitim/tag referansı düzenlemede aynı kalabilir; kaldırılmış tag bağı aynı satır üzerinden geri etkinleştirilir, pasif tag yeniden eklenemez. Hesabı veya profili soft-deleted yazarın adı/kimliği public cevapta açılmaz; “Katılımcı” gösterilir. Soru beğenileri, görüntülenmeleri ve cevapları sonraki teslimlerdir; bu uçlar henüz sayaç üretmez.

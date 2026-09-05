@@ -46,7 +46,10 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/api/universities", "/api/universities/*/departments", "/api/departments", "/api/tags").permitAll()
                         .requestMatchers("/api/manager/**").hasRole("MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/tags").hasAnyRole("ADMIN","MANAGER")
-                        .requestMatchers("/api/me/profile").authenticated()
+                        .requestMatchers(HttpMethod.GET, "/api/questions", "/api/questions/*").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/questions", "/api/questions/*/archive").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/questions/*").authenticated()
+                        .requestMatchers("/api/me/profile", "/api/me/questions").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/me").authenticated()
                         .anyRequest().denyAll())
                 .exceptionHandling(errors -> errors

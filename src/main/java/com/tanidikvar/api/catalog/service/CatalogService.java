@@ -47,6 +47,12 @@ public class CatalogService {
         if(requireActive && !relation.available()) throw new DomainException(400,"INACTIVE_EDUCATION","Bu üniversite/bölüm artık yeni seçimlere açık değil.");
         return relation;
     }
+    @Transactional(propagation=Propagation.MANDATORY)
+    public CatalogResponse lockReference(CatalogKind kind,UUID id,boolean requireActive) {
+        var entry=catalog.lock(kind,id).orElseThrow(this::missing);
+        if(requireActive && entry.deletedAt()!=null) throw new DomainException(400,"INACTIVE_CATALOG","Aktif bir katalog kaydı seç.");
+        return mapper.toResponse(entry);
+    }
     private void manager(UUID actor) {
         if(accounts.lockActive(actor).getAuthority()!=Authority.MANAGER) throw new DomainException(403,"ACCESS_DENIED","Bu işlem için Manager yetkisi gerekir.");
     }
