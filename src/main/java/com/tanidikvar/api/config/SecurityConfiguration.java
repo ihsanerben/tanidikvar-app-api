@@ -59,7 +59,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/api/questions/*/my-answer").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/questions/*/answers").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/answers/*", "/api/answers/*/status").authenticated()
-                        .requestMatchers(HttpMethod.GET, "/api/questions", "/api/questions/*").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/popular", "/api/admins", "/api/questions", "/api/questions/*").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/questions", "/api/questions/*/archive").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/questions/*").authenticated()
                         .requestMatchers("/api/me/profile", "/api/me/questions").authenticated()
