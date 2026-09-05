@@ -218,3 +218,16 @@ Hesap pasifleştirme aynı transaction’da oturum/aksiyon token’larını ipta
 Manager işlemleri için profil tamamlanması gerekmez. Soru/cevap moderasyonu mevcut soru → aktör kilit sırasını kullanır; hesap işlemleri Manager → hedef hesap sırasıyla başvuru kararlarıyla aynı kilidi paylaşır. İşlem geçmişi yazılamazsa tüm değişiklikler rollback olur. İstatistikler tek SQL snapshot’ından hesaplanır; cache/arka plan işi eklenmedi.
 
 Bu teslimde `./mvnw verify`: 111 test başarılı; gerçek PostgreSQL üzerinde 10 yeni yönetim testi dahil. Docker ve OpenAPI doğrulandı.
+
+## Yerel kullanım komutları
+
+- `./run.sh --docker`: tüm servisleri derle/başlat.
+- `./run.sh --status`: durmuş olanlar dahil Docker servislerini göster; ayar veya veri değiştirmez.
+- `./run.sh --stop`: Docker servislerini durdur; DB ve yükleme volume’larını korur.
+- `./run.sh --help`: komut özeti.
+
+Seçeneksiz `./run.sh` yerel Java geliştirme akışını korur. Hatalı/ek seçenekler ayar oluşturulmadan reddedilir. Status/stop mevcut `.env` ister; otomatik kurulum yapmaz. Ayrı terminalde çalışan API/web süreçlerini bu komutlar sonlandırmaz; Ctrl+C kullan.
+
+Yerel e-postalar Mailpit `http://localhost:8025` ekranındadır. Uzun kullanımda Docker dosya volume’u ile yerel `.local/storage` dizininin farklı olduğunu dikkate al; aynı çalışma biçiminde kal. Otomatik dosya taşıma/sıfırlama yoktur.
+
+Launcher doğrulaması: `python3 scripts/test-launcher.py` — geçici dosyalar ve sahte Docker komutuyla 4 test; gerçek `.env`, Docker veya kullanıcı kayıtlarını değiştirmez. Uygulama testlerinden bağımsızdır.
