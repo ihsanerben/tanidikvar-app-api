@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: tanidikvar-api
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    hikari:
+      connection-timeout: 3000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate.jdbc.time_zone: UTC
+  flyway:
+    enabled: true
+  mvc:
+    log-resolved-exception: false
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
+    include-binding-errors: never
+app:
+  cors-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
+  secure-cookies: ${COOKIE_SECURE:true}
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
