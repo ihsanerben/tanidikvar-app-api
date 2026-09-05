@@ -12,6 +12,8 @@ public class AccountAccessService {
     private final AccountRepository accounts;
     public AccountAccessService(AccountRepository accounts) { this.accounts=accounts; }
     @Transactional(propagation=Propagation.MANDATORY)
+    public Account lockForManagement(UUID id) { return accounts.lockById(id).orElseThrow(()->new com.tanidikvar.api.common.error.DomainException(404,"NOT_FOUND","Kullanıcı bulunamadı.")); }
+    @Transactional(propagation=Propagation.MANDATORY)
     public Account lockActive(UUID id) {
         return accounts.lockById(id).filter(a -> !a.isDeleted() && a.isEmailVerified()).orElseThrow(AuthRejectedException::new);
     }

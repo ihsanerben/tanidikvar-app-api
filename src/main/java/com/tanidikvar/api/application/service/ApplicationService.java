@@ -70,6 +70,13 @@ public class ApplicationService {
   for(UUID id:applications.pendingIds(owner)){applications.decide(id,actor,"REJECTED","Admin yetkisi kaldırıldığı için kapatıldı: "+reason.substring(0,Math.min(reason.length(),900)));applications.audit(actor,"REJECTED","ADMIN_APPLICATION",id,"Yetki kaldırılması nedeniyle kapatıldı.");}
   account.revokeAdmin(clock.instant());applications.audit(actor,"REVOKE_ADMIN","USER",owner,reason);
  }
+ @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)
+ public void rejectPendingForDeactivation(UUID actor,UUID owner,String reason){
+  for(UUID id:applications.pendingIds(owner)){
+   applications.decide(id,actor,"REJECTED","Hesap pasifleştirildi: "+reason.substring(0,Math.min(reason.length(),900)));
+   applications.audit(actor,"REJECTED","ADMIN_APPLICATION",id,"Hesap pasifleştirilmesi nedeniyle kapatıldı.");
+  }
+ }
  private String reason(String reason){if(reason==null||reason.isBlank()||reason.strip().length()>1000)throw new DomainException(400,"REASON_REQUIRED","Gerekçe yaz (en fazla 1000 karakter).");return reason.strip();}
  private void manager(UUID actor){if(accounts.lockActive(actor).getAuthority()!=Authority.MANAGER)throw denied();}
  private DomainException denied(){return new DomainException(403,"ACCESS_DENIED","Manager yetkisi gerekir; Manager hesapları bu işleme dahil edilemez.");}

@@ -28,8 +28,8 @@ public class EngagementRepository {
             SELECT q.id,
               (SELECT count(*) FROM question_views v WHERE v.question_id=q.id AND v.deleted_at IS NULL) AS views,
               (SELECT count(*) FROM question_likes l WHERE l.question_id=q.id AND l.deleted_at IS NULL) AS likes,
-              (SELECT count(*) FROM answers a WHERE a.question_id=q.id AND a.deleted_at IS NULL AND a.answer_kind='COMMUNITY') AS community,
-              (SELECT count(*) FROM answers a WHERE a.question_id=q.id AND a.deleted_at IS NULL AND a.answer_kind='ADMIN') AS admins
+              (SELECT count(*) FROM answers a WHERE a.question_id=q.id AND a.deleted_at IS NULL AND a.moderated_at IS NULL AND a.answer_kind='COMMUNITY') AS community,
+              (SELECT count(*) FROM answers a WHERE a.question_id=q.id AND a.deleted_at IS NULL AND a.moderated_at IS NULL AND a.answer_kind='ADMIN') AS admins
             FROM questions q WHERE q.id IN (:ids) AND q.deleted_at IS NULL
             """,Map.of("ids",ids),(org.springframework.jdbc.core.RowCallbackHandler)r->result.put(r.getObject("id",UUID.class),new QuestionStatistics(r.getLong("views"),r.getLong("likes"),r.getLong("community"),r.getLong("admins"))));
         return result;

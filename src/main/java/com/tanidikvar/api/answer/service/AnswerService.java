@@ -22,6 +22,7 @@ public class AnswerService {
     public AnswerService(AnswerRepository answers,AnswerMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,QuestionAccessService questions) {
         this.answers=answers;this.mapper=mapper;this.accounts=accounts;this.interaction=interaction;this.questions=questions;
     }
+ private void unmoderated(Answer a){if(a.moderatedAt()!=null)throw new DomainException(409,"ANSWER_MODERATED","Bu cevap Manager tarafından gizlendi. Düzenlenemez veya geri yüklenemez.");}
     private Answer find(UUID id) { return answers.find(id).orElseThrow(()->new DomainException(404,"NOT_FOUND","Cevap bulunamadı.")); }
     private void active(QuestionState q) {if(q.archivedAt()!=null)throw new DomainException(409,"QUESTION_ARCHIVED","Arşivlenmiş soru yeni cevap veya düzenlemeye kapalıdır.");}
     private void actor(UUID actor) {accounts.lockActive(actor);interaction.requireCompleted(actor);}
@@ -47,7 +48,7 @@ public class AnswerService {
         var q=questions.lock(question);actor(actor);String text=body(request.body());
         var existing=answers.own(question,actor);
         if(existing.isPresent()) {
-            var a=existing.get();
+            var a=existing.get();unmoderated(a);
             if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Kaldırdığın cevabı geri yükleyebilirsin.");
             if(!a.body().equals(text))throw new DomainException(409,"ANSWER_EXISTS","Bu soruya zaten cevap verdin. Mevcut cevabını düzenle.");
             return mapper.toResponse(a);
@@ -56,14 +57,14 @@ public class AnswerService {
     }
     @Transactional
     public AnswerResponse update(UUID id,UUID actor,AnswerUpdateRequest request) {
-        var before=find(id);var q=questions.lock(before.questionId());actor(actor);var a=find(id);owner(a,actor);version(a,request.version());active(q);
+        var before=find(id);var q=questions.lock(before.questionId());actor(actor);var a=find(id);owner(a,actor);version(a,request.version());active(q);unmoderated(a);
         if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Önce cevabını geri yükle.");
         String text=body(request.body());if(!text.equals(a.body()))answers.update(id,text);return mapper.toResponse(find(id));
     }
     @Transactional
     public AnswerResponse status(UUID id,UUID actor,AnswerStatusRequest request) {
         var before=find(id);var q=questions.lock(before.questionId());actor(actor);var a=find(id);owner(a,actor);version(a,request.version());
-        if(!request.deleted())active(q);
+        if(!request.deleted()){active(q);unmoderated(a);}
         if((a.deletedAt()!=null)!=request.deleted())answers.status(id,request.deleted());
         return mapper.toResponse(find(id));
     }
