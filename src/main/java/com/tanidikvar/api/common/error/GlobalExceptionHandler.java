@@ -18,6 +18,24 @@ import org.springframework.web.servlet.resource.NoResourceFoundException;
 public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
+    @ExceptionHandler(com.tanidikvar.api.auth.exception.AuthRejectedException.class)
+    ResponseEntity<ApiError> authentication(HttpServletRequest request) {
+        return ResponseEntity.status(401).body(ApiErrors.create(request, 401, "AUTHENTICATION_REQUIRED", "E-posta veya şifre hatalı ya da oturumun sona erdi."));
+    }
+    @ExceptionHandler(com.tanidikvar.api.auth.exception.EmailUnverifiedException.class)
+    ResponseEntity<ApiError> unverified(HttpServletRequest request) {
+        return ResponseEntity.status(403).body(ApiErrors.create(request, 403, "EMAIL_UNVERIFIED", "Önce e-posta adresini doğrula."));
+    }
+    @ExceptionHandler(com.tanidikvar.api.auth.exception.ActionTokenException.class)
+    ResponseEntity<ApiError> actionToken(HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(ApiErrors.create(request, 400, "INVALID_ACTION_TOKEN", "Bağlantının süresi dolmuş veya bağlantı kullanılmış. Yeni bağlantı iste."));
+    }
+    @ExceptionHandler(com.tanidikvar.api.auth.exception.PasswordFormatException.class)
+    ResponseEntity<ApiError> password(HttpServletRequest request) {
+        return ResponseEntity.badRequest().body(new ApiError(Instant.now(), 400, "VALIDATION_FAILED", "Lütfen form alanlarını kontrol et.",
+                request.getRequestURI(), (String) request.getAttribute("requestId"), java.util.Map.of("password", "Şifre UTF-8 olarak en fazla 72 bayt olabilir.")));
+    }
+
     @ExceptionHandler({DataAccessException.class, CannotCreateTransactionException.class})
     ResponseEntity<ApiError> database(Exception error, HttpServletRequest request) {
         log.error("database_unavailable requestId={} errorType={}", request.getAttribute("requestId"), error.getClass().getSimpleName());

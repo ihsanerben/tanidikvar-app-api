@@ -15,6 +15,17 @@ spring:
       hibernate.jdbc.time_zone: UTC
   flyway:
     enabled: true
+  mail:
+    host: ${SMTP_HOST:localhost}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USERNAME:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: ${SMTP_AUTH:false}
+      mail.smtp.starttls.enable: ${SMTP_STARTTLS:false}
+      mail.smtp.connectiontimeout: 3000
+      mail.smtp.timeout: 3000
+      mail.smtp.writetimeout: 3000
   mvc:
     log-resolved-exception: false
 server:
@@ -24,6 +35,13 @@ server:
     include-stacktrace: never
     include-binding-errors: never
 app:
+  auth:
+    secret: ${JWT_SECRET}
+    access-ttl: ${JWT_ACCESS_TTL:15m}
+    refresh-ttl: ${JWT_REFRESH_TTL:14d}
+  mail:
+    frontend-url: ${FRONTEND_URL:http://localhost:5173}
+    from: ${MAIL_FROM:noreply@tanidikvar.local}
   cors-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
   secure-cookies: ${COOKIE_SECURE:true}
 springdoc:
