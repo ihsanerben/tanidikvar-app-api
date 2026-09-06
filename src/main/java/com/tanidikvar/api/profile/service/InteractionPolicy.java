@@ -11,7 +11,7 @@ public class InteractionPolicy {
     @Transactional(readOnly=true)
     public void requireCompleted(UUID id) {
         requireParticipant(id);
-        if (profiles.status(id)==null) throw new DomainException(403,"PROFILE_REQUIRED","Bu işlem için profilini tamamla.");
+        if (!profiles.completed(id)) throw new DomainException(403,"PROFILE_REQUIRED","Bu işlem için profilini tamamla.");
     }
     @Transactional(readOnly=true)
     public void requireParticipant(UUID id) {

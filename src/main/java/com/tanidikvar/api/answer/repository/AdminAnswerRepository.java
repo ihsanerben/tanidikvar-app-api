@@ -15,13 +15,16 @@ public class AdminAnswerRepository {
  JOIN users u ON u.id=a.author_id
  LEFT JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL AND u.deleted_at IS NULL
  JOIN admin_applications v ON v.id=a.verification_application_id
+ LEFT JOIN university_departments ud ON ud.id=p.university_department_id
+ LEFT JOIN universities university ON university.id=ud.university_id
+ LEFT JOIN departments department ON department.id=ud.department_id
  LEFT JOIN stored_files f ON f.owner_id=u.id AND f.purpose='AVATAR' AND f.upload_status='READY' AND f.deleted_at IS NULL
  WHERE a.answer_kind='ADMIN'
  """;
  private static final String SELECT="""
- SELECT a.*,q.title question_title,CASE WHEN p.user_id IS NOT NULL THEN concat_ws(' ',v.submitted_first_name,v.submitted_last_name) END author_name,
+ SELECT a.*,q.title question_title,CASE WHEN p.user_id IS NOT NULL THEN concat_ws(' ',p.first_name,p.last_name) END author_name,
  (u.authority='ADMIN' AND EXISTS(SELECT 1 FROM admin_applications current_v WHERE current_v.id=u.active_verification_application_id AND current_v.applicant_id=u.id AND current_v.status='APPROVED' AND current_v.deleted_at IS NULL)) active_admin,
- v.university_name,v.department_name,v.education_status,v.graduation_year,f.id avatar_file_id,p.occupation,p.company
+ university.name university_name,department.name department_name,p.education_status,p.graduation_year,f.id avatar_file_id,p.occupation,p.company
  """+FROM;
  private Instant time(ResultSet r,String key)throws SQLException{var t=r.getTimestamp(key);return t==null?null:t.toInstant();}
  private AdminAnswer map(ResultSet r,int n)throws SQLException{return new AdminAnswer(r.getObject("id",UUID.class),r.getObject("question_id",UUID.class),r.getString("question_title"),r.getObject("author_id",UUID.class),r.getString("author_name"),r.getBoolean("active_admin"),r.getString("university_name"),r.getString("department_name"),r.getString("education_status"),(Integer)r.getObject("graduation_year"),r.getObject("avatar_file_id",UUID.class),r.getString("occupation"),r.getString("company"),r.getString("body"),time(r,"published_at"),time(r,"edited_at"),time(r,"deleted_at"),time(r,"moderated_at"),r.getLong("version"));}
@@ -41,4 +44,3 @@ public class AdminAnswerRepository {
  public List<AssignmentResponse> assignments(UUID owner,int page,int size){return jdbc.query("SELECT s.*,q.title,q.archived_at FROM question_assignments s JOIN questions q ON q.id=s.question_id AND q.deleted_at IS NULL WHERE s.admin_id=? AND s.deleted_at IS NULL ORDER BY s.assigned_at DESC,s.id LIMIT ? OFFSET ?",(r,n)->new AssignmentResponse(r.getObject("question_id",UUID.class),r.getString("title"),true,r.getLong("version"),time(r,"assigned_at"),time(r,"archived_at")),owner,size,page*size);}
  public long assignmentCount(UUID owner){return jdbc.queryForObject("SELECT count(*) FROM question_assignments s JOIN questions q ON q.id=s.question_id AND q.deleted_at IS NULL WHERE s.admin_id=? AND s.deleted_at IS NULL",Long.class,owner);}
 }
-

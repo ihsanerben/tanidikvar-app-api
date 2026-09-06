@@ -7,6 +7,7 @@ import com.tanidikvar.api.profile.dto.*;
 import com.tanidikvar.api.profile.entity.*;
 import com.tanidikvar.api.profile.mapper.ProfileMapper;
 import com.tanidikvar.api.profile.repository.ProfileRepository;
+import com.tanidikvar.api.file.repository.FileRepository;
 import java.time.*;
 import java.util.*;
 import org.springframework.stereotype.Service;
@@ -18,9 +19,10 @@ public class ProfileService {
     private final ProfileMapper mapper;
     private final CatalogService catalog;
     private final AccountAccessService accounts;
+    private final FileRepository files;
     private final Clock clock;
-    public ProfileService(ProfileRepository profiles,ProfileMapper mapper,CatalogService catalog,AccountAccessService accounts,Clock clock) {
-        this.profiles=profiles; this.mapper=mapper; this.catalog=catalog; this.accounts=accounts; this.clock=clock;
+    public ProfileService(ProfileRepository profiles,ProfileMapper mapper,CatalogService catalog,AccountAccessService accounts,FileRepository files,Clock clock) {
+        this.profiles=profiles; this.mapper=mapper; this.catalog=catalog; this.accounts=accounts; this.files=files; this.clock=clock;
     }
     @Transactional(readOnly=true)
     public ProfileResponse get(UUID id) {
@@ -36,6 +38,7 @@ public class ProfileService {
         String first=clean(request.firstName()),last=clean(request.lastName());
         if(first.isEmpty()) fields.put("firstName","Adını yaz.");
         if(last.isEmpty()) fields.put("lastName","Soyadını yaz.");
+        if(files.avatar(id).isEmpty()) fields.put("avatarFileId","Profilini tamamlamak için profil fotoğrafı ekle.");
         if(request.educationStatus()==EducationStatus.YKS_ADAYI) {
             if(request.universityDepartmentId()!=null) fields.put("universityDepartmentId","YKS adayı için üniversite/bölüm seçilmez.");
         } else if(request.universityDepartmentId()==null) fields.put("universityDepartmentId","Üniversiteni ve bölümünü seç.");

@@ -12,6 +12,6 @@ public class AccountMapper {
     public CurrentUserResponse toResponse(Account account) {
         var education = profiles.status(account.getId());
         String role = account.getAuthority() == Authority.MEMBER ? (education==null ? "USER" : education.name()) : account.getAuthority().name();
-        return new CurrentUserResponse(account.getId(), account.getEmail(), role, education!=null);
+        return new CurrentUserResponse(account.getId(), account.getEmail(), role, profiles.completed(account.getId()));
     }
 }

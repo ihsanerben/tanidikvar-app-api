@@ -67,8 +67,7 @@ public class CatalogService {
     public CatalogResponse create(UUID actor,CatalogKind kind,String name,String reason) {
         var account=accounts.lockActive(actor);
         if(account.getAuthority()!=Authority.MANAGER) {
-            if(kind!=CatalogKind.TAG || account.getAuthority()!=Authority.ADMIN) throw new DomainException(403,"ACCESS_DENIED","Bu işlem için yetkin yok.");
-            interaction.requireCompleted(actor);
+            throw new DomainException(403,"ACCESS_DENIED","Bu işlem için Manager yetkisi gerekir.");
         }
         if(account.getAuthority()==Authority.MANAGER) reason=reason(reason);
         UUID id=UUID.randomUUID(); String clean=CatalogNames.clean(name);

@@ -71,10 +71,9 @@ class AdminAnswerIT {
   var a=admin();var b=member();var m=actor("MANAGER");String q=question(a),url="/api/questions/"+q+"/admin-answers";
   mvc.perform(get(url)).andExpect(status().isOk());
   mvc.perform(post(url).with(csrf()).contentType("application/json").content("{\"body\":\"Deneme cevap metnidir.\"}")).andExpect(status().isUnauthorized());
-  mvc.perform(write("POST",url,a,Map.of("body","Deneme cevap metnidir."))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ASSIGNMENT_REQUIRED"));
   for(var invalid:List.of(b,m)){mvc.perform(write("PUT","/api/questions/"+q+"/assignment",invalid,Map.of("assigned",true,"version",0))).andExpect(status().isForbidden());mvc.perform(write("POST",url,invalid,Map.of("body","Deneme cevap metnidir."))).andExpect(status().isForbidden());}
   mvc.perform(put("/api/questions/"+q+"/assignment").cookie(a.cookie()).contentType("application/json").content("{\"assigned\":true,\"version\":0}")).andExpect(status().isForbidden());
-  assign(a,q,0);var answer=publish(a,q);
+  var answer=publish(a,q);
   mvc.perform(write("POST","/api/questions/"+q+"/answers",a,Map.of("body","Ayrı topluluk deneyim metnidir."))).andExpect(status().isCreated());
   mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.totalElements").value(1));
   mvc.perform(get(url)).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.items[0].documentFileId").doesNotExist());
@@ -106,8 +105,8 @@ class AdminAnswerIT {
   mvc.perform(write("PUT",path(answer),a,Map.of("body","Düzenlenmiş üniversite deneyimim.","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.editedAt").isNotEmpty());
   mvc.perform(write("PUT",path(answer)+"/status",a,Map.of("deleted",true,"version",1))).andExpect(status().isOk());
   verification(a,"MEZUN");
-  mvc.perform(write("PUT",path(answer)+"/status",a,Map.of("deleted",false,"version",2))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ASSIGNMENT_REQUIRED"));
-  assign(a,q,2);mvc.perform(write("PUT",path(answer)+"/status",a,Map.of("deleted",false,"version",2))).andExpect(status().isOk()).andExpect(jsonPath("$.publishedAt").value(answer.get("publishedAt").asText())).andExpect(jsonPath("$.educationStatus").value("UNIVERSITE_OGRENCISI"));
+  jdbc.update("UPDATE user_profiles SET education_status='MEZUN',graduation_year=2025 WHERE user_id=?",a.id());
+  mvc.perform(write("PUT",path(answer)+"/status",a,Map.of("deleted",false,"version",2))).andExpect(status().isOk()).andExpect(jsonPath("$.publishedAt").value(answer.get("publishedAt").asText())).andExpect(jsonPath("$.educationStatus").value("MEZUN"));
   mvc.perform(get("/api/admins/"+a.id())).andExpect(jsonPath("$.educationStatus").value("MEZUN"));
   assertThat(jdbc.queryForObject("SELECT verification_application_id FROM answers WHERE id=?",UUID.class,UUID.fromString(answer.get("id").asText()))).isEqualTo(old);
   mvc.perform(get("/api/me/admin-quota").cookie(a.cookie())).andExpect(jsonPath("$.used").value(1));
@@ -176,4 +175,3 @@ class AdminAnswerIT {
   assertThat(jdbc.queryForObject("SELECT authority FROM users WHERE id=?",String.class,a.id())).isEqualTo("MEMBER");
  }
 }
-

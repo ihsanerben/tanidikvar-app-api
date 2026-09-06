@@ -55,15 +55,14 @@ public class AdminAnswerService {
  @Transactional
  public AdminAnswerResponse create(UUID q,UUID id,AnswerCreateRequest request){var question=questions.lock(q);var account=actor(id);UUID verification=requireAdmin(account);String body=text(request.body());var old=answers.own(q,id);
   if(old.isPresent()){var a=old.get();unmoderated(a);if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Cevabını geri yükleyebilirsin.");if(!a.body().equals(body))throw new DomainException(409,"ANSWER_EXISTS","Mevcut cevabını düzenle.");return mapper.toResponse(a);}
-  active(question);assigned(q,id);Instant now=clock.instant();if(quota(account,now).remaining()==0)throw new DomainException(409,"DAILY_LIMIT","Bugünkü beş farklı soru hakkını kullandın.");
+  active(question);Instant now=clock.instant();if(quota(account,now).remaining()==0)throw new DomainException(409,"DAILY_LIMIT","Bugünkü beş farklı soru hakkını kullandın.");
   UUID answer=UUID.randomUUID();answers.create(answer,q,id,verification,body,now);return mapper.toResponse(find(answer));
  }
  @Transactional
  public AdminAnswerResponse update(UUID id,UUID actor,AnswerUpdateRequest request){var before=find(id);var q=questions.lock(before.questionId());var account=actor(actor);var a=find(id);owner(a,actor);version(a.version(),request.version());requireAdmin(account);active(q);unmoderated(a);if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Önce cevabını geri yükle.");String body=text(request.body());if(!body.equals(a.body()))answers.update(id,body);return mapper.toResponse(find(id));}
  @Transactional
  public AdminAnswerResponse status(UUID id,UUID actor,AnswerStatusRequest request){var before=find(id);var q=questions.lock(before.questionId());var account=actor(actor);var a=find(id);owner(a,actor);version(a.version(),request.version());
-  if(!request.deleted()){unmoderated(a);requireAdmin(account);active(q);assigned(q.id(),actor);}
+  if(!request.deleted()){unmoderated(a);requireAdmin(account);active(q);}
   if((a.deletedAt()!=null)!=request.deleted())answers.status(id,request.deleted());return mapper.toResponse(find(id));
  }
 }
-

@@ -46,6 +46,11 @@ public class AnswerService {
         return new PageResponse<>(answers.list(question,page,size).stream().map(mapper::toResponse).toList(),page,size,answers.count(question));
     }
     @Transactional(readOnly=true)
+    public PageResponse<AnswerResponse> publicHistory(UUID author,int page,int size) {
+        if(page<0||page>10000||size<1||size>100)throw new DomainException(400,"INVALID_REQUEST","Sayfa sınırlarını kontrol et.");
+        return new PageResponse<>(answers.listPublicByAuthor(author,page,size).stream().map(mapper::toResponse).toList(),page,size,answers.countPublicByAuthor(author));
+    }
+    @Transactional(readOnly=true)
     public Optional<AnswerResponse> mine(UUID question,UUID actor) {
         questions.requireReadable(question);return answers.own(question,actor).map(mapper::toResponse);
     }
