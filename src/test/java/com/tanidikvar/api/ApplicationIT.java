@@ -198,4 +198,13 @@ class ApplicationIT {
   jdbc.update("UPDATE users SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",a.id());
   mvc.perform(get("/api/files/"+app.get("documentFileId").asText()+"/download").cookie(m.cookie())).andExpect(status().isNotFound());
  }
+
+ @Test void avatarCanBeUploadedBeforeFirstProfileSave()throws Exception{
+  var a=actor("MEMBER");String file=avatar(a).get("fileId").asText();
+  mvc.perform(get("/api/me/avatar").cookie(a.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.fileId").value(file));
+  mvc.perform(get("/api/avatars/"+file)).andExpect(status().isOk());
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM user_profiles WHERE user_id=?",Long.class,a.id())).isZero();
+  mvc.perform(post("/api/me/avatar/remove").cookie(a.cookie()).with(csrf())).andExpect(status().isNoContent());
+  mvc.perform(get("/api/avatars/"+file)).andExpect(status().isNotFound());
+ }
 }

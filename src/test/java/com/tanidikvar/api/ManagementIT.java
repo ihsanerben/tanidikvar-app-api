@@ -21,8 +21,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 @SpringBootTest @AutoConfigureMockMvc(print=MockMvcPrint.NONE) @ActiveProfiles("local") @Testcontainers
 class ManagementIT {
+ @org.junit.jupiter.api.io.TempDir static java.nio.file.Path storage;
  @Container static final PostgreSQLContainer postgres=new PostgreSQLContainer("postgres:17.9-alpine");
- @DynamicPropertySource static void configuration(DynamicPropertyRegistry p){p.add("spring.datasource.url",postgres::getJdbcUrl);p.add("spring.datasource.username",postgres::getUsername);p.add("spring.datasource.password",postgres::getPassword);p.add("app.auth.secret",()->Base64.getEncoder().encodeToString(new byte[48]));}
+ @DynamicPropertySource static void configuration(DynamicPropertyRegistry p){p.add("spring.datasource.url",postgres::getJdbcUrl);p.add("spring.datasource.username",postgres::getUsername);p.add("spring.datasource.password",postgres::getPassword);p.add("app.storage-directory",()->storage.toString());p.add("app.auth.secret",()->Base64.getEncoder().encodeToString(new byte[48]));}
  @Autowired JdbcTemplate jdbc;@Autowired MockMvc mvc;@Autowired ObjectMapper mapper;@Autowired PasswordEncoder passwords;@Autowired AuthenticationService auth;
  record Actor(UUID id,String email,Cookie cookie){}
  Actor actor(String role){UUID id=UUID.randomUUID();String email=id+"@example.test";jdbc.update("INSERT INTO users(id,email,password_hash,authority,email_verified_at,created_at,updated_at) VALUES (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",id,email,passwords.encode("Testing-password!"),role);return new Actor(id,email,new Cookie("TV_ACCESS",auth.login(email,"Testing-password!").accessToken()));}
@@ -155,5 +156,88 @@ class ManagementIT {
   mvc.perform(get("/api/manager/content").cookie(m.cookie()).param("q",q.toString()).param("kind","COMMUNITY").param("status","VISIBLE")).andExpect(jsonPath("$.totalElements").value(0));
   assertThat(read("/api/manager/statistics",m).get("communityAnswers").asLong()).isEqualTo(before.get("communityAnswers").asLong()-1);
   moderate(m,q,"QUESTION",false,1).andExpect(status().isOk());assertThat(read("/api/manager/statistics",m).get("communityAnswers").asLong()).isEqualTo(before.get("communityAnswers").asLong());
+ }
+ @Autowired com.tanidikvar.api.answer.service.AnswerService answerService;
+ @Test void managerCannotParticipateEvenWithCompletedEducationProfile()throws Exception{
+  var m=actor("MANAGER");profile(m);var member=actor("MEMBER");profile(member);UUID q=question(member);
+  for(String endpoint:List.of("/api/questions","/api/questions/"+q+"/answers","/api/questions/"+q+"/admin-answers","/api/me/admin-applications"))
+   mvc.perform(write("POST",endpoint,m,Map.of())).andExpect(status().isForbidden());
+  for(String endpoint:List.of("/api/questions/"+q+"/like","/api/questions/"+q+"/assignment"))mvc.perform(write("PUT",endpoint,m,Map.of())).andExpect(status().isForbidden());
+  assertThatThrownBy(()->answerService.create(q,m.id(),new com.tanidikvar.api.answer.dto.AnswerCreateRequest("Yönetim hesabından katkı denemesi"))).isInstanceOf(com.tanidikvar.api.common.error.DomainException.class).hasMessageContaining("Manager");
+  mvc.perform(write("POST","/api/questions/"+q+"/answers",member,Map.of("body","Normal üyenin geçerli cevabı"))).andExpect(status().isCreated());
+ }
+ @Test void managerViewsNeverCountAndAnonymousOpeningsStillCount()throws Exception{
+  var m=actor("MANAGER");var a=actor("MEMBER");UUID q=question(a),event=UUID.randomUUID();
+  mvc.perform(write("POST","/api/questions/"+q+"/views",m,Map.of("openingEventId",event))).andExpect(status().isNoContent());
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM question_views WHERE question_id=?",Long.class,q)).isZero();
+  for(int i=0;i<2;i++)mvc.perform(post("/api/questions/"+q+"/views").with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("openingEventId",event)))).andExpect(status().isNoContent());
+  mvc.perform(post("/api/questions/"+q+"/views").with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("openingEventId",UUID.randomUUID())))).andExpect(status().isNoContent());
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM question_views WHERE question_id=?",Long.class,q)).isEqualTo(2);
+ }
+ @Test void managerIdentityAndAvatarDoNotRequireEducationAndRejectStaleUpdates()throws Exception{
+  var m=actor("MANAGER");var member=actor("MEMBER");
+  mvc.perform(get("/api/manager/account").cookie(member.cookie())).andExpect(status().isForbidden());
+  mvc.perform(write("PUT","/api/manager/account",m,Map.of("firstName","Deniz","lastName","Yönetici","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
+  mvc.perform(write("PUT","/api/manager/account",m,Map.of("firstName","Eski","lastName","Yönetici","version",0))).andExpect(status().isConflict());
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM user_profiles WHERE user_id=?",Long.class,m.id())).isZero();
+  byte[] bytes;try(var out=new java.io.ByteArrayOutputStream()){javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB),"png",out);bytes=out.toByteArray();}
+  var file=new org.springframework.mock.web.MockMultipartFile("file","avatar.png","image/png",bytes);
+  var response=mapper.readTree(mvc.perform(multipart("/api/me/avatar").file(file).cookie(m.cookie()).with(csrf())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
+  mvc.perform(get("/api/avatars/"+response.get("fileId").asText())).andExpect(status().isOk());
+  mvc.perform(write("POST","/api/me/avatar/remove",m,Map.of())).andExpect(status().isNoContent());
+  mvc.perform(get("/api/avatars/"+response.get("fileId").asText())).andExpect(status().isNotFound());
+  mvc.perform(get("/api/me").cookie(m.cookie())).andExpect(jsonPath("$.role").value("MANAGER")).andExpect(jsonPath("$.profileCompleted").value(false));
+ }
+ @Test void workspaceIncludesHiddenQuestionAndBothKindsWithoutPublicExposure()throws Exception{
+  var m=actor("MANAGER");var a=actor("MEMBER");profile(a);UUID v=application(a,m,true),q=question(a),community=answer(a,q,null),admin=answer(a,q,v);
+  jdbc.update("UPDATE questions SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",q);jdbc.update("UPDATE answers SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",community);jdbc.update("UPDATE answers SET moderated_at=CURRENT_TIMESTAMP WHERE id=?",admin);
+  mvc.perform(get("/api/manager/questions/"+q).cookie(m.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.answers.totalElements").value(2)).andExpect(jsonPath("$.question.moderatedAt").isNotEmpty());
+  mvc.perform(get("/api/manager/questions/"+q).cookie(a.cookie())).andExpect(status().isForbidden());mvc.perform(get("/api/questions/"+q)).andExpect(status().isNotFound());
+  mvc.perform(get("/api/manager/questions/"+q).cookie(m.cookie()).param("size","101")).andExpect(status().isBadRequest());
+ }
+ Map<String,Object> classification(String scope,UUID university,List<UUID> tags,long version){var map=new HashMap<String,Object>();map.put("scope",scope);map.put("universityId",university);map.put("tagIds",tags);map.put("version",version);map.put("reason","Kapsam yanlış seçilmiş; belgeye göre düzeltildi.");return map;}
+ UUID catalog(String table){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO "+table+"(id,name,normalized_name) VALUES (?,?,?)",id,"Katalog "+id,id.toString());return id;}
+ @Test void classificationPreservesAuthorTextTimesAndRequiresReasonVersionAndActiveReferences()throws Exception{
+  var m=actor("MANAGER");var a=actor("MEMBER");UUID q=question(a),university=catalog("universities"),tag=catalog("tags");String endpoint="/api/manager/questions/"+q+"/classification";var original=jdbc.queryForMap("SELECT title,body,created_at,edited_at,author_id FROM questions WHERE id=?",q);
+  var request=classification("UNIVERSITY",university,List.of(tag),0);
+  mvc.perform(write("PUT",endpoint,a,request)).andExpect(status().isForbidden());
+  var noReason=new HashMap<>(request);noReason.remove("reason");mvc.perform(write("PUT",endpoint,m,noReason)).andExpect(status().isBadRequest());
+  mvc.perform(write("PUT",endpoint,m,request)).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
+  assertThat(jdbc.queryForMap("SELECT title,body,created_at,edited_at,author_id FROM questions WHERE id=?",q)).isEqualTo(original);
+  mvc.perform(write("PUT",endpoint,m,request)).andExpect(status().isConflict());
+  mvc.perform(write("PUT",endpoint,m,classification("UNIVERSITY",university,List.of(tag),1))).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM management_actions WHERE target_id=?",Long.class,q)).isEqualTo(1);
+  mvc.perform(write("PUT",endpoint,m,classification("GENERAL",null,List.of(),1))).andExpect(status().isOk());
+  assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM question_tags WHERE question_id=? AND tag_id=?",Boolean.class,q,tag)).isTrue();
+  jdbc.update("UPDATE tags SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",tag);
+  mvc.perform(write("PUT",endpoint,m,classification("GENERAL",null,List.of(tag),2))).andExpect(status().isBadRequest());
+ }
+ @Test void classificationRaceAndAuditFailureCannotPartiallyChangeQuestion()throws Exception{
+  var m=actor("MANAGER");var a=actor("MEMBER");UUID q=question(a),u=catalog("universities");String path="/api/manager/questions/"+q+"/classification";var gate=new CountDownLatch(1);
+  try(var pool=Executors.newFixedThreadPool(2)){
+   var first=pool.submit(()->{gate.await();return mvc.perform(write("PUT",path,m,classification("UNIVERSITY",u,List.of(),0))).andReturn().getResponse().getStatus();});
+   var second=pool.submit(()->{gate.await();return moderate(m,q,"QUESTION",true,0).andReturn().getResponse().getStatus();});gate.countDown();assertThat(List.of(first.get(10,TimeUnit.SECONDS),second.get(10,TimeUnit.SECONDS))).containsExactlyInAnyOrder(200,409);
+  }
+  UUID other=question(a);jdbc.execute("CREATE FUNCTION fail_classification_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.target_id='"+other+"'::uuid THEN RAISE EXCEPTION 'test failure'; END IF; RETURN NEW; END $$");jdbc.execute("CREATE TRIGGER fail_classification_test AFTER INSERT ON management_actions FOR EACH ROW EXECUTE FUNCTION fail_classification_test()");
+  try{mvc.perform(write("PUT","/api/manager/questions/"+other+"/classification",m,classification("UNIVERSITY",u,List.of(),0))).andExpect(status().isServiceUnavailable());assertThat(jdbc.queryForObject("SELECT scope FROM questions WHERE id=?",String.class,other)).isEqualTo("GENERAL");assertThat(jdbc.queryForObject("SELECT version FROM questions WHERE id=?",Long.class,other)).isZero();}finally{jdbc.execute("DROP TRIGGER fail_classification_test ON management_actions");jdbc.execute("DROP FUNCTION fail_classification_test()");}
+ }
+ @Test void userDetailAndApplicationHistoryIncludeInactiveUsersAndStayManagerOnly()throws Exception{
+  var m=actor("MANAGER");var a=actor("MEMBER");profile(a);UUID approved=application(a,m,true),pending=application(a,m,false),q=question(a);answer(a,q,null);answer(a,q,approved);
+  mvc.perform(get("/api/manager/users/"+a.id()).cookie(m.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.questions").value(1)).andExpect(jsonPath("$.communityAnswers").value(1)).andExpect(jsonPath("$.adminAnswers").value(1)).andExpect(jsonPath("$.verificationId").value(approved.toString()));
+  disable(m,a,true,version(a)).andExpect(status().isOk());
+  mvc.perform(get("/api/manager/users/"+a.id()+"/applications").cookie(m.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2));
+  mvc.perform(get("/api/manager/admin-applications/"+pending).cookie(m.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("REJECTED"));
+  mvc.perform(get("/api/manager/users/"+a.id())).andExpect(status().isUnauthorized());
+ }
+ @Test void catalogImpactReasonAndActionFiltersMatchActualChanges()throws Exception{
+  var m=actor("MANAGER");var a=actor("MEMBER");UUID q=question(a),u=catalog("universities");jdbc.update("UPDATE questions SET scope='UNIVERSITY',university_id=? WHERE id=?",u,q);
+  mvc.perform(get("/api/manager/catalog-usage/UNIVERSITY/"+u).cookie(m.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.questions").value(1));
+  String endpoint="/api/manager/catalog/UNIVERSITY/"+u+"/status";
+  mvc.perform(write("PUT",endpoint,m,Map.of("deleted",true,"version",0))).andExpect(status().isBadRequest());
+  mvc.perform(write("PUT",endpoint,m,Map.of("deleted",true,"version",0,"reason","Katalog geçici incelemede"))).andExpect(status().isOk());
+  assertThat(jdbc.queryForObject("SELECT university_id FROM questions WHERE id=?",UUID.class,q)).isEqualTo(u);
+  var actions=read("/api/manager/actions?action=SOFT_DELETE&targetType=UNIVERSITY&q="+u,m);assertThat(actions.get("totalElements").asLong()).isEqualTo(1);UUID action=UUID.fromString(actions.get("items").get(0).get("id").asText());
+  mvc.perform(get("/api/manager/actions/"+action).cookie(m.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.actorName").value(m.email())).andExpect(jsonPath("$.action.reason").value("Katalog geçici incelemede"));
+  mvc.perform(get("/api/manager/actions/"+action).cookie(a.cookie())).andExpect(status().isForbidden());
  }
 }

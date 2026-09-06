@@ -14,6 +14,12 @@ import org.springframework.web.bind.annotation.*;
 public class AnswerController {
     private final AnswerService answers;
     public AnswerController(AnswerService answers) {this.answers=answers;}
+    @GetMapping("/api/me/answers") @SecurityRequirement(name="accessCookie")
+    @Operation(summary="Kendi topluluk cevaplarını, kaldırılmış olanlar dahil, okunabilir sorularla listeler")
+    public PageResponse<OwnAnswerResponse> history(@AuthenticationPrincipal SessionPrincipal principal,
+            @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+        return answers.listMine(principal.userId(),page,size);
+    }
     @GetMapping("/api/questions/{id}/answers")
     @Operation(summary="Görünür topluluk cevaplarını ilk yayın sırasıyla listeler")
     public PageResponse<AnswerResponse> list(@PathVariable UUID id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {return answers.list(id,page,size);}

@@ -34,6 +34,12 @@ public class AnswerService {
         return clean;
     }
     @Transactional(readOnly=true)
+    public PageResponse<OwnAnswerResponse> listMine(UUID actor,int page,int size) {
+        if(page<0||page>10000||size<1||size>100)throw new DomainException(400,"INVALID_REQUEST","Sayfa sınırlarını kontrol et.");
+        return new PageResponse<>(answers.listMine(actor,page,size).stream()
+                .map(entry->new OwnAnswerResponse(mapper.toResponse(entry.answer()),entry.questionTitle())).toList(),page,size,answers.countMine(actor));
+    }
+    @Transactional(readOnly=true)
     public PageResponse<AnswerResponse> list(UUID question,int page,int size) {
         if(page<0||page>10000||size<1||size>100)throw new DomainException(400,"INVALID_REQUEST","Sayfa sınırlarını kontrol et.");
         questions.requireReadable(question);

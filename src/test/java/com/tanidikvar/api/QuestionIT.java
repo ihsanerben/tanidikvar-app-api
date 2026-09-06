@@ -51,6 +51,7 @@ class QuestionIT {
         return new Actor(id,new Cookie("TV_ACCESS",auth.login(email,"Testing-password!").accessToken()));
     }
     MockHttpServletRequestBuilder write(String method,String path,Actor actor,Object body){
+        if((path.startsWith("/api/manager/catalog")||path.startsWith("/api/manager/university-departments"))&&body instanceof Map<?,?> map){var enriched=new HashMap<String,Object>();map.forEach((k,v)->enriched.put(k.toString(),v));enriched.putIfAbsent("reason","Test kataloğu yönetimi");body=enriched;}
         return (method.equals("PUT")?put(path):post(path)).cookie(actor.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body));
     }
     JsonNode create(Actor actor,String kind,String name)throws Exception{
@@ -64,11 +65,11 @@ class QuestionIT {
     Map<String,Object> profile(String status,long version){
         var body=new HashMap<String,Object>();body.put("firstName","Ada");body.put("lastName","Yılmaz");body.put("educationStatus",status);body.put("version",version);return body;
     }
-    Actor member(String role)throws Exception {var a=actor(role);mvc.perform(write("PUT","/api/me/profile",a,profile("YKS_ADAYI",0))).andExpect(status().isOk());return a;}
+    Actor member(String role)throws Exception {var a=actor(role);if(role.equals("MANAGER"))return a;mvc.perform(write("PUT","/api/me/profile",a,profile("YKS_ADAYI",0))).andExpect(status().isOk());return a;}
     Map<String,Object> content(String title) {var c=new HashMap<String,Object>();c.put("title",title);c.put("scope","GENERAL");c.put("tagIds",List.of());return c;}
     JsonNode question(Actor a,Map<String,Object> c)throws Exception {return mapper.readTree(mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
     @Test void publicReadingProfileGateCsrfAndOwnership()throws Exception {
-        var incomplete=actor("MEMBER");var owner=member("MEMBER");var admin=member("ADMIN");var manager=member("MANAGER");
+        var incomplete=actor("MEMBER");var owner=member("MEMBER");var admin=member("ADMIN");var manager=member("MEMBER");
         var c=content("Üniversitede kampüs hayatı nasıl?");var body=Map.of("requestId",UUID.randomUUID(),"content",c);
         mvc.perform(post("/api/questions").with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body))).andExpect(status().isUnauthorized());
         mvc.perform(write("POST","/api/questions",incomplete,body)).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("PROFILE_REQUIRED"));
@@ -79,10 +80,10 @@ class QuestionIT {
             mvc.perform(write("PUT",path,other,Map.of("version",0,"content",c))).andExpect(status().isForbidden());
             mvc.perform(write("POST",path+"/archive",other,Map.of("version",0))).andExpect(status().isForbidden());
         }
-        question(admin,c);
+        mvc.perform(write("POST","/api/questions",admin,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isForbidden());
     }
     @Test void threeScopesFiltersAndDatabaseConstraints()throws Exception {
-        var a=member("MANAGER");var e=education(a);var t=create(a,"TAG","Soru Tag "+UUID.randomUUID());
+        var a=member("MEMBER");var manager=actor("MANAGER");var e=education(manager);var t=create(manager,"TAG","Soru Tag "+UUID.randomUUID());
         var c=content("Üniversite ve bölüm deneyimleri nasıl?");c.put("scope","UNIVERSITY_DEPARTMENT");c.put("universityDepartmentId",e.get("id").asText());c.put("tagIds",List.of(t.get("id").asText()));
         var q=question(a,c);
         mvc.perform(get("/api/questions").param("universityId",e.get("universityId").asText()).param("universityDepartmentId",e.get("id").asText()).param("tagId",t.get("id").asText()))
@@ -130,7 +131,7 @@ class QuestionIT {
         mvc.perform(get("/api/me/questions").cookie(a.cookie())).andExpect(jsonPath("$.totalElements").value(0));
     }
     @Test void tagsAreSoftDeletedAndReusedAndInactiveReferencesCannotBeNewlyAdded()throws Exception {
-        var a=member("MANAGER");var e=education(a);var t=create(a,"TAG","Soru "+UUID.randomUUID());UUID tag=UUID.fromString(t.get("id").asText());
+        var a=member("MEMBER");var manager=actor("MANAGER");var e=education(manager);var t=create(manager,"TAG","Soru "+UUID.randomUUID());UUID tag=UUID.fromString(t.get("id").asText());
         var c=content("Tag geçmişi korunacak olan soru");c.put("scope","UNIVERSITY_DEPARTMENT");c.put("universityDepartmentId",e.get("id").asText());c.put("tagIds",List.of(tag));
         var q=question(a,c);UUID id=UUID.fromString(q.get("id").asText());String path="/api/questions/"+id;
         c.put("tagIds",List.of());mvc.perform(write("PUT",path,a,Map.of("version",0,"content",c))).andExpect(status().isOk());
@@ -153,7 +154,7 @@ class QuestionIT {
         assertThatThrownBy(()->jdbc.execute("TRUNCATE question_likes, question_views, questions,question_tags, answers, question_assignments")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
     @Test void failedTagWriteRollsBackQuestionCreation()throws Exception {
-        var a=member("MANAGER");var t=create(a,"TAG","Rollback "+UUID.randomUUID());UUID tag=UUID.fromString(t.get("id").asText());
+        var a=member("MEMBER");var manager=actor("MANAGER");var t=create(manager,"TAG","Rollback "+UUID.randomUUID());UUID tag=UUID.fromString(t.get("id").asText());
         jdbc.execute("CREATE FUNCTION fail_question_tag_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.tag_id='"+tag+"'::uuid THEN RAISE EXCEPTION 'test failure'; END IF; RETURN NEW; END $$");
         jdbc.execute("CREATE TRIGGER fail_question_tag_test BEFORE INSERT ON question_tags FOR EACH ROW EXECUTE FUNCTION fail_question_tag_test()");
         var c=content("Yarım kayıt oluşmaması gereken soru");c.put("tagIds",List.of(tag));UUID request=UUID.randomUUID();

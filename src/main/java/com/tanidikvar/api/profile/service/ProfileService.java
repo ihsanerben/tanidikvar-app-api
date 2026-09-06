@@ -29,7 +29,7 @@ public class ProfileService {
     }
     @Transactional
     public ProfileResponse update(UUID id,ProfileRequest request) {
-        accounts.lockActive(id);
+        if(accounts.lockActive(id).getAuthority()==com.tanidikvar.api.auth.entity.Authority.MANAGER) throw new DomainException(403,"ACCESS_DENIED","Yönetim hesabı ayarlarını kullan.");
         var old=profiles.find(id).orElse(null);
         if(request.version()!=(old==null?0:old.version())) throw new DomainException(409,"STALE_VERSION","Profil başka bir ekranda değişmiş. Güncel bilgileri yükle.");
         var fields=new LinkedHashMap<String,String>();
@@ -43,14 +43,22 @@ public class ProfileService {
             int year=LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul"))).getYear();
             if(request.graduationYear()==null || request.graduationYear()<1900 || request.graduationYear()>year) fields.put("graduationYear","Geçerli bir mezuniyet yılı yaz.");
         } else if(request.graduationYear()!=null) fields.put("graduationYear","Mezuniyet yılı yalnız mezunlar içindir.");
+        String linkedin=profileUrl(request.linkedinUrl(),"linkedinUrl",true,fields),portfolio=profileUrl(request.portfolioUrl(),"portfolioUrl",false,fields);
         if(!fields.isEmpty()) throw new DomainException(400,"VALIDATION_FAILED","Profil alanlarını kontrol et.",fields);
         if(request.universityDepartmentId()!=null) {
             boolean newSelection=old==null || old.deletedAt()!=null || !Objects.equals(old.universityDepartmentId(),request.universityDepartmentId());
             catalog.lockEducation(request.universityDepartmentId(),newSelection);
         }
         profiles.save(new UserProfile(id,first,last,request.educationStatus(),request.universityDepartmentId(),request.graduationYear(),
-                optional(request.biography()),optional(request.occupation()),optional(request.company()),null,request.version()),old!=null);
+                optional(request.biography()),optional(request.occupation()),optional(request.company()),linkedin,portfolio,null,request.version()),old!=null);
         return get(id);
+    }
+    private String profileUrl(String value,String field,boolean linkedin,Map<String,String> errors) {
+        String text=optional(value);if(text==null)return null;
+        try {var uri=new java.net.URI(text);String host=uri.getHost();
+            if(!Set.of("http","https").contains(uri.getScheme()==null?"":uri.getScheme().toLowerCase(Locale.ROOT)) || host==null || uri.getRawUserInfo()!=null || uri.getPort()!=-1 && uri.getPort()!=80 && uri.getPort()!=443 || text.contains("\\") || linkedin && !(host.equalsIgnoreCase("linkedin.com") || host.toLowerCase(Locale.ROOT).endsWith(".linkedin.com"))) throw new IllegalArgumentException();
+            if(uri.toASCIIString().length()>2048)throw new IllegalArgumentException();return uri.toASCIIString();
+        } catch(java.net.URISyntaxException|IllegalArgumentException e){errors.put(field,linkedin?"Geçerli bir LinkedIn bağlantısı yaz (https://www.linkedin.com/…).":"http:// veya https:// ile başlayan geçerli bir site bağlantısı yaz.");return null;}
     }
     private String clean(String text) { return text.replaceAll("[\\s\\p{Z}]+"," ").strip(); }
     private String optional(String text) { return text==null || text.isBlank()?null:text.strip(); }

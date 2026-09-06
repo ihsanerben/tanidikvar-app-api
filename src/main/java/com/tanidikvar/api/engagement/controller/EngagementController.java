@@ -19,7 +19,7 @@ public class EngagementController {
     public QuestionStatisticsResponse statistics(@PathVariable UUID id) {return statistics.get(id);}
     @PostMapping("/api/questions/{id}/views") @ResponseStatus(HttpStatus.NO_CONTENT)
     @Operation(summary="Başarılı detay açılışını kaydeder; aynı açılış kimliğinin tekrarı sayılmaz, CSRF gerekir")
-    public void view(@PathVariable UUID id,@Valid @RequestBody ViewRequest request) {engagement.view(id,request);}
+    public void view(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal principal,@Valid @RequestBody ViewRequest request) {engagement.view(id,request,principal==null?null:principal.userId());}
     @GetMapping("/api/questions/{id}/like") @SecurityRequirement(name="accessCookie")
     public LikeResponse mine(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal principal) {return engagement.mine(id,principal.userId());}
     @PutMapping("/api/questions/{id}/like") @SecurityRequirement(name="accessCookie")

@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class ProfileMapper {
     public ProfileResponse toResponse(UserProfile p,EducationResponse education) {
-        if(p==null || p.deletedAt()!=null) return new ProfileResponse(null,null,null,null,null,null,null,null,false,p==null?0:p.version());
-        return new ProfileResponse(p.firstName(),p.lastName(),p.educationStatus(),education,p.graduationYear(),p.biography(),p.occupation(),p.company(),true,p.version());
+        if(p==null || p.deletedAt()!=null) return new ProfileResponse(null,null,null,null,null,null,null,null,null,null,false,p==null?0:p.version());
+        return new ProfileResponse(p.firstName(),p.lastName(),p.educationStatus(),education,p.graduationYear(),p.biography(),p.occupation(),p.company(),p.linkedinUrl(),p.portfolioUrl(),true,p.version());
     }
 }

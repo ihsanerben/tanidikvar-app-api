@@ -87,11 +87,12 @@ public class QuestionService {
     @Transactional
     public QuestionResponse create(UUID actor,QuestionCreateRequest request) {
         actor(actor);
+        if(accounts.lockActive(actor).getAuthority()==com.tanidikvar.api.auth.entity.Authority.ADMIN)throw new DomainException(403,"ADMIN_QUESTION_FORBIDDEN","Adminler soru oluşturamaz; sorulara cevap verebilir.");
         var existing=questions.existing(actor,request.requestId());
         var content=clean(request.content());
         if(existing.isPresent()) {
             var saved=find(existing.get(),false);var tags=questions.tags(List.of(saved.id())).getOrDefault(saved.id(),List.of());
-            if(!sameContent(saved,content,tags))throw new DomainException(409,"REQUEST_CONFLICT","Bu gönderim daha önce kaydedilmiş. Sorularım sayfasından kontrol et.");
+            if(!sameContent(saved,content,tags))throw new DomainException(409,"REQUEST_CONFLICT","Bu gönderim daha önce kaydedilmiş. Sorunun detayını kontrol et.");
             return mapper.toResponse(saved,tags,statistics.get(saved.id()));
         }
         references(content,null,List.of());

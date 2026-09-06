@@ -25,7 +25,7 @@ public class ManagerCatalogController {
             @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) { return catalog.list(kind,q,includeDeleted,page,size); }
     @PostMapping("/catalog/{kind}") @ResponseStatus(HttpStatus.CREATED)
     public CatalogResponse create(@AuthenticationPrincipal SessionPrincipal principal,@PathVariable CatalogKind kind,@Valid @RequestBody CatalogCreateRequest request) {
-        return catalog.create(principal.userId(),kind,request.name());
+        return catalog.create(principal.userId(),kind,request.name(),request.reason());
     }
     @PutMapping("/catalog/{kind}/{id}") public CatalogResponse rename(@AuthenticationPrincipal SessionPrincipal principal,
             @PathVariable CatalogKind kind,@PathVariable UUID id,@Valid @RequestBody CatalogUpdateRequest request) {

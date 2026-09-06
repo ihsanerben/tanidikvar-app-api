@@ -81,4 +81,8 @@ public class ApplicationService {
  private void manager(UUID actor){if(accounts.lockActive(actor).getAuthority()!=Authority.MANAGER)throw denied();}
  private DomainException denied(){return new DomainException(403,"ACCESS_DENIED","Manager yetkisi gerekir; Manager hesapları bu işleme dahil edilemez.");}
  private AdminApplication find(UUID id){return applications.find(id).orElseThrow(()->new DomainException(404,"NOT_FOUND","Başvuru bulunamadı."));}
+ @Transactional
+ public ApplicationResponse detail(UUID actor,UUID id){manager(actor);return mapper.toResponse(applications.managerFind(id).orElseThrow(()->new DomainException(404,"NOT_FOUND","Başvuru bulunamadı.")));}
+ @Transactional
+ public PageResponse<ApplicationResponse> history(UUID actor,UUID owner,int page,int size){manager(actor);com.tanidikvar.api.common.dto.SearchQuery.page(page,size);return new PageResponse<>(applications.managerHistory(owner,page,size).stream().map(mapper::toResponse).toList(),page,size,applications.managerHistoryCount(owner));}
 }

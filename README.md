@@ -86,13 +86,13 @@ Auth uçlarında socket IP + işlem başına 15 dakikada 10 istek; refresh için
 
 - `GET/PUT /api/me/profile`: yalnız kendi profilin; istemciden kullanıcı/otorite atanmaz. Ad/soyad ve eğitim durumu zorunlu; öğrencide üniversite-bölüm, mezunda ayrıca yıl gerekir. Biyografi/meslek/şirket isteğe bağlıdır. Fotoğraf yükleme/kaldırma uçları aşağıda açıklanır.
 - `GET /api/universities`, `/api/departments`, `/api/tags`, `/api/universities/{id}/departments`: public, aktif kayıtlar, `q/page/size`. Liste cevabı `items/page/size/totalElements`; varsayılan boyut 20, üst sınır 100.
-- `POST /api/tags`: tamamlanmış profilli Admin veya Manager yeni tag oluşturur.
-- `/api/manager/catalog/{kind}`: Manager listeleme/ekleme; `{kind}` UNIVERSITY, DEPARTMENT, TAG. `PUT /{id}` ad günceller; `PUT /{id}/status` `{deleted,version}` ile soft delete/geri yükler. Manager listesinde `includeDeleted=true` kullanılabilir.
+- `POST /api/tags`: tamamlanmış profilli Admin yeni tag oluşturur. Manager gerekçeli `/api/manager/catalog/TAG` ucunu kullanır.
+- `/api/manager/catalog/{kind}`: Manager listeleme/ekleme; `{kind}` UNIVERSITY, DEPARTMENT, TAG. `PUT /{id}` ad günceller; `PUT /{id}/status` `{deleted,version,reason}` ile soft delete/geri yükler. Manager listesinde `includeDeleted=true` kullanılabilir.
 - `/api/manager/university-departments`: Manager `universityId` ile listeleme ve POST eşleştirme; `PUT /{id}/status` soft delete/geri yükleme.
 
 V3 `user_profiles`, `tags`, `management_actions` oluşturur. İlk iki migration değişmez. İsimler Türkçe harf dönüşümü/boşluk normalizasyonuyla unique tutulur; aynı üniversite-bölüm çifti yeniden oluşturulamaz. Yeni seçimde pasif ebeveyn/eşleşme reddedilir; mevcut profilde aynı eğitim referansı korunabilir. Parent geri yükleme bağımsız silinmiş çocuk kaydı geri getirmez.
 
-Profil ve katalog güncellemesinde istemci `version` gönderir. Stale form 409 STALE_VERSION alır; otomatik üzerine yazılmaz. İlk profil için version=0. Profil tamamlama eğitim rolünü günceller; ADMIN/MANAGER yetkisi korunur. InteractionPolicy profil ön koşulunu taşır; yeni soru/cevap mutasyonları sonraki teslimlerde bu kontrolü kullanacaktır.
+Profil ve katalog güncellemesinde istemci `version` gönderir. Stale form 409 STALE_VERSION alır; otomatik üzerine yazılmaz. İlk profil için version=0. Profil tamamlama eğitim rolünü günceller; ADMIN yetkisi korunur. Manager eğitim profili düzenleyemez; ayrı yönetim kimliği kullanır. InteractionPolicy etkileşimlerde Manager yasağını ve diğer katılımcılarda profil ön koşulunu uygular.
 
 ## İlk Manager
 
@@ -127,7 +127,7 @@ Yeni katalog seçimi aktif olmalıdır. Mevcut pasif eğitim/tag referansı düz
 - `PUT /api/answers/{id}`: `{body,version}`; yalnız sahibi, tamamlanmış profil ve aktif soru/cevap. Gerçek metin değişikliğinde editedAt/version güncellenir; publishedAt korunur. Değişmeyen metin no-op’tur.
 - `PUT /api/answers/{id}/status`: `{deleted,version}`; yalnız sahibi ve tamamlanmış profil. Soft delete arşivlenmiş soruda da yapılabilir; geri yükleme yalnız aktif soruda aynı satırdan yapılır. İlk yayın ve son düzenleme tarihleri korunur. Eski version 409 STALE_VERSION döndürür; eski silme isteği yeniden yüklenmiş cevabı gizleyemez.
 
-V5 `answers` tablosunu ekler: `(question_id,author_id,answer_kind)` silinmiş satırlar dahil unique, FK, body/version CHECK ve DELETE/TRUNCATE engeli. V5 başlangıcında answer_kind yalnız COMMUNITY idi; V7 doğrulanmış ADMIN türü, doğrulama FK’sı ve günlük kota desteğini ekler. Önceki migration’lar değişmez. Admin/Manager topluluk cevabı verebilir; bu doğrulanmış admin cevabı değildir ve kota tüketmez.
+V5 `answers` tablosunu ekler: `(question_id,author_id,answer_kind)` silinmiş satırlar dahil unique, FK, body/version CHECK ve DELETE/TRUNCATE engeli. V5 başlangıcında answer_kind yalnız COMMUNITY idi; V7 doğrulanmış ADMIN türü, doğrulama FK’sı ve günlük kota desteğini ekler. Önceki migration’lar değişmez. Admin topluluk cevabı verebilir; Manager katkı veremez; bu doğrulanmış admin cevabı değildir ve kota tüketmez.
 
 Bütün cevap mutasyonları soru → kullanıcı sırasıyla kilitlenir. QuestionAccessService soru görünürlüğü/arşiv kilidini diğer feature’lara sunar; cevap servisi başka feature repository’sine bağlanmaz. Arşivleme ile yeni cevap yarışı aynı soru kilidiyle çözülür. Soru soft-deleted ise liste, kendi cevabı ve bütün mutasyonlar 404 döner; çocuk cevap satırı fiziksel silinmez. Silinmiş yazar/profil adı Katılımcı olarak gösterilir. Yeni cevap POST’unun birebir tekrarı arşivde de mevcut satırı okuyabilir; yeni yayın yapamaz.
 
@@ -203,17 +203,17 @@ Liste, toplam ve toplu kart sayaçları read-only REPEATABLE_READ transaction i�
 ## Manager paneli ve moderasyon
 
 - `GET /api/manager/statistics`: hesap, başvuru, soru, görünür cevap, beğeni ve detay açılışı toplamları.
-- `GET /api/manager/users`: `q`, `status=ALL|VISIBLE|HIDDEN`, `page`, `size`; Manager’a özel kullanıcı listesi. Parola/token dönmez.
+- `GET /api/manager/users`: `authority=MEMBER|ADMIN|MANAGER`, `q`, `status=ALL|VISIBLE|HIDDEN`, `page`, `size`; Manager’a özel kullanıcı listesi. Parola/token dönmez.
 - `PUT /api/manager/users/{id}/status`: `{hidden,version,reason}`; `hidden=true` hesabı pasifleştirir, `false` geri yükler. Manager hedefleri reddedilir.
 - `GET /api/manager/content`: `kind=QUESTION|COMMUNITY|ADMIN`, `q`, `status=ALL|VISIBLE|HIDDEN`, `page`, `size`.
 - `PUT /api/manager/content/{kind}/{id}/status`: `{hidden,version,reason}`; yalnız görünürlük değişir, metin ve arşiv durumu korunur.
-- `GET /api/manager/actions`: `page`, `size`; gerekçeli yönetim geçmişi.
+- `GET /api/manager/actions`: `q`, `action`, `targetType`, `page`, `size`; gerekçeli yönetim geçmişi.
 
 Tüm uçlar güncel Manager yetkisi ister; mutasyonlar CSRF korumalıdır. Liste varsayılan 20, en fazla 100 kayıt; page en fazla 10000. Arama en fazla 100, gerekçe zorunlu 1–1000 karakterdir. Eski sürüm `409 STALE_VERSION` döndürür; aynı sürüm/hedef durum tekrarı yeni audit üretmez.
 
 V10, `answers.moderated_at` ekler; eski migration’lar ve kayıtlar korunur. Cevap `deleted_at` sahibi tarafından kaldırmayı, `moderated_at` Manager gizlemesini tutar. Public görünürlük için ikisi ve sorunun `deleted_at` alanı boş olmalıdır. Private cevap DTO’larında da `moderatedAt` bulunur; Manager gizlemesi varken sahibi düzenleme/geri yükleme yaparsa `409 ANSWER_MODERATED` alır. Sahibi cevabını ayrıca kaldırabilir. Admin günlük kotası ve ilk yayın zamanı değişmez.
 
-Hesap pasifleştirme aynı transaction’da oturum/aksiyon token’larını iptal eder, Admin yetkisini kaldırır, bekleyen başvuruları reddeder ve audit yazar. Geri yükleme eski oturumları veya Admin yetkisini geri getirmez; eğitim/profil korunur. Aktif olmayan yazar public içerikte Katılımcı olur. Hesap pasifken önceki başvuru/dosya erişim kuralları gereği başvuruları ve dosyaları görünmez; kayıtlar saklanır.
+Hesap pasifleştirme aynı transaction’da oturum/aksiyon token’larını iptal eder, Admin yetkisini kaldırır, bekleyen başvuruları reddeder ve audit yazar. Geri yükleme eski oturumları veya Admin yetkisini geri getirmez; eğitim/profil korunur. Aktif olmayan yazar public içerikte Katılımcı olur. Hesap pasifken önceki başvuru/dosya erişim kuralları gereği dosyaları indirilemez; Manager başvuru bilgilerini inceleyebilir, kayıtlar saklanır.
 
 Manager işlemleri için profil tamamlanması gerekmez. Soru/cevap moderasyonu mevcut soru → aktör kilit sırasını kullanır; hesap işlemleri Manager → hedef hesap sırasıyla başvuru kararlarıyla aynı kilidi paylaşır. İşlem geçmişi yazılamazsa tüm değişiklikler rollback olur. İstatistikler tek SQL snapshot’ından hesaplanır; cache/arka plan işi eklenmedi.
 
@@ -231,3 +231,39 @@ Seçeneksiz `./run.sh` yerel Java geliştirme akışını korur. Hatalı/ek seç
 Yerel e-postalar Mailpit `http://localhost:8025` ekranındadır. Uzun kullanımda Docker dosya volume’u ile yerel `.local/storage` dizininin farklı olduğunu dikkate al; aynı çalışma biçiminde kal. Otomatik dosya taşıma/sıfırlama yoktur.
 
 Launcher doğrulaması: `python3 scripts/test-launcher.py` — geçici dosyalar ve sahte Docker komutuyla 4 test; gerçek `.env`, Docker veya kullanıcı kayıtlarını değiştirmez. Uygulama testlerinden bağımsızdır.
+
+## Yerel profil kataloğu ve test temizliği
+
+Manuel `./scripts/seed-local-catalog.sh`, 10 üniversite, 10 bölüm, 75 gerçek üniversite–bölüm eşleşmesi ve 19 tag ekler. Bu küçük başlangıç listesi resmî popülerlik sıralaması değildir. Mevcut pasif katalog kararları korunur. [Liste, kaynaklar ve yerel temizlik betiği](scripts/LOCAL_CATALOG.md). Test temizliği migration’a/başlangıca bağlı değildir; açıkça çalıştırılan atomik SQL yalnız kesin sentetik kalıpları soft delete yapar ve diğer hesap/profillerin değişmediğini doğrular.
+
+V11 yalnız sistem taglerinin oluşturucusunu nullable yapar; migration’lar katalog verisi eklemez. Sistem katalog taglerinde `created_by` null olabilir; bunun için sahte kullanıcı oluşturulmaz. Kullanıcı tarafından oluşturulan tagler aktör kimliğini korur; mevcut yetki/audit kuralları değişmez. Yayınlanmamış eski V11/V12 seed migration’ları yerel sıfırlama kapsamında ayrıldı: Bu ayrımdan sonra V12 yönetim kimliği eklendi; 12 şema migration’ı ve ayrı manuel seed scripti bulunur.
+
+## Kişisel yorum geçmişi
+
+`GET /api/me/answers?page=0&size=20`, oturum sahibinin topluluk cevaplarını soru başlığıyla döndürür. İstemciden kullanıcı kimliği almaz; yalnız authenticated erişim vardır. Yanıt `PageResponse<OwnAnswerResponse>`; her öğe `answer` ve `questionTitle` içerir. Kaldırılmış/gizlenmiş kendi cevapları durumlarıyla görünür; sorunun kendisi soft-deleted ise liste ve sayımdan çıkar. Yeni migration gerekmedi; mevcut author indexi kullanılır. 114 backend testi geçti.
+
+Topluluk cevapları ve `/api/me/answers` içindeki cevap nesnesi güncel `avatarFileId` (nullable) içerir. Avatar, aktif profil ve READY/aktif dosya üzerinden alınır; silinmiş profil/hesap kimliği açığa çıkarılmaz. Şema değişikliği yoktur.
+
+
+## Manager çalışma alanı — V12 sözleşmesi
+
+Manager soru/cevap yayımlayamaz, beğeni/atama veya Admin başvurusu yapamaz; HTTP ve servis kontrolleri birlikte uygulanır. `POST /api/questions/{id}/views` authenticated Manager için sayaç oluşturmaz. Diğer ziyaretçilerin her detay açılışı davranışı korunur.
+
+- `GET/PUT /api/manager/account`: ayrı yönetim kimliği; PUT `{firstName,lastName,version}`. Eğitim profili gerekmez; mevcut avatar uçları kullanılabilir.
+- `GET /api/manager/users/{id}`: hesap, eğitim, doğrulama ve geçmiş dahil katkı sayıları.
+- `GET /api/manager/admin-applications/{id}` ve `GET /api/manager/users/{id}/applications?page=0&size=20`: başvuru detayı/geçmişi. Pasif hesabın bilgileri görünür, belge indirme kuralı değişmez.
+- `GET /api/manager/questions/{id}?page=0&size=20`: gizli soru ve her iki tür cevabı içeren çalışma detayı.
+- `PUT /api/manager/questions/{id}/classification`: `{scope,universityId,universityDepartmentId,tagIds,version,reason}`; yalnız kapsam/tagler değişir, yazar metni ve yayın/düzenleme zamanı korunur.
+- `GET /api/manager/catalog-usage/{kind}/{id}`: bağlı profil/soru sayıları; kind UNIVERSITY/DEPARTMENT/UNIVERSITY_DEPARTMENT/TAG.
+- `GET /api/manager/actions/{id}`: işlem detayı ve aktör adı. Liste q/action/targetType ile filtrelenir.
+
+Tüm Manager katalog ekleme, ad değiştirme, eşleştirme ve durum istekleri zorunlu 1–1000 karakter reason taşır. Yeni web bu sözleşmeyle birlikte kullanılmalıdır. Mutasyonlar version/CSRF, hedef yetkisi, kilit ve transaction audit kontrollerini korur. V12 mevcut Manager adlarını `manager_profiles` tablosuna taşır; eski profil/içerik/dosyalar korunur. Genel silme veya veritabanı sıfırlama panel ucu yoktur.
+
+Güncel Manager teslimi doğrulaması: 123 backend, 109 frontend testi ve 8 masaüstü + 8 mobil senaryo geçti. Son PDF/katalog değişiklikleri iki cihazda yeniden doğrulandı (6/6). Lint/build ve 67 yollu OpenAPI kontrolü başarılı. E2E ayrı Compose test ortamında çalıştı; günlük veritabanına test verisi yazılmadı.
+
+
+## Profil bağlantıları ve cevap görünümü
+
+`PUT /api/me/profile` artık opsiyonel `linkedinUrl` ve `portfolioUrl` alanlarını alır. Bağlantılar doğrulanır; LinkedIn alanı linkedin.com altında olmalıdır. `GET /api/profiles/{id}` public eğitim/biyografi/iş bilgileri, avatar ve bu bağlantıları döndürür; özel hesap ve belge bilgileri dönmez. Avatar ilk profil kaydından önce yüklenebilir.
+
+Admin soru oluşturamaz; yalnız sorulara doğrulanmış Admin cevabı verebilir. Admin Panel’de cevaplar “Cevaplarım” altında, topluluk geçmişi “Yorumlarım” altında bulunur; Sorularım ve Admin başvurusu bağlantıları Admin’den kaldırılmıştır. Soru detayında Admin/Topluluk cevapları sekmeleri, varsayılan Admin sekmesi ve kalp ikonlu idempotent beğeni düğmesi vardır. V13 migration uygulanmalıdır.
