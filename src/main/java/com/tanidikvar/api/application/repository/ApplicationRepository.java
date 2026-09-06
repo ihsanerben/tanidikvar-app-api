@@ -21,5 +21,8 @@ public class ApplicationRepository {
  public void decide(UUID id,UUID actor,String status,String reason){jdbc.update("UPDATE admin_applications SET status=?,reviewed_by=?,reviewed_at=clock_timestamp(),rejection_reason=?,updated_at=clock_timestamp(),version=version+1 WHERE id=? AND status='PENDING'",status,actor,reason,id);}
  public List<UUID> pendingIds(UUID owner){return jdbc.query("SELECT id FROM admin_applications WHERE applicant_id=? AND status='PENDING' AND deleted_at IS NULL",(r,n)->r.getObject(1,UUID.class),owner);}
  public void audit(UUID actor,String action,String type,UUID target,String reason){jdbc.update("INSERT INTO management_actions(id,actor_id,action,target_type,target_id,reason) VALUES (?,?,?,?,?,?)",UUID.randomUUID(),actor,action,type,target,reason);}
+ public Optional<AdminApplication> managerFind(UUID id){return jdbc.query(SELECT.replace(" AND u.deleted_at IS NULL","")+" AND a.id=?",row,id).stream().findFirst();}
+ public List<AdminApplication> managerHistory(UUID owner,int page,int size){return jdbc.query(SELECT.replace(" AND u.deleted_at IS NULL","")+" AND a.applicant_id=? ORDER BY a.submitted_at DESC,a.id LIMIT ? OFFSET ?",row,owner,size,page*size);}
+ public long managerHistoryCount(UUID owner){return jdbc.queryForObject("SELECT count(*) FROM admin_applications WHERE applicant_id=? AND deleted_at IS NULL",Long.class,owner);}
 }
 

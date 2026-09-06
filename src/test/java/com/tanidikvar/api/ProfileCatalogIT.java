@@ -51,6 +51,7 @@ class ProfileCatalogIT {
         return new Actor(id,new Cookie("TV_ACCESS",auth.login(email,"Testing-password!").accessToken()));
     }
     MockHttpServletRequestBuilder write(String method,String path,Actor actor,Object body){
+        if((path.startsWith("/api/manager/catalog")||path.startsWith("/api/manager/university-departments"))&&body instanceof Map<?,?> map){var enriched=new HashMap<String,Object>();map.forEach((k,v)->enriched.put(k.toString(),v));enriched.putIfAbsent("reason","Test kataloğu yönetimi");body=enriched;}
         return (method.equals("PUT")?put(path):post(path)).cookie(actor.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body));
     }
     JsonNode create(Actor actor,String kind,String name)throws Exception{
@@ -95,9 +96,9 @@ class ProfileCatalogIT {
         mvc.perform(write("PUT","/api/me/profile",member,body)).andExpect(status().isBadRequest());
         assertThatThrownBy(()->jdbc.update("UPDATE user_profiles SET education_status='YKS_ADAYI' WHERE user_id=?",member.id())).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
-    @Test void profileCompletionDoesNotReplaceManagementAuthority()throws Exception{
-        var manager=actor("MANAGER");mvc.perform(write("PUT","/api/me/profile",manager,profile("YKS_ADAYI",0))).andExpect(status().isOk());
-        mvc.perform(get("/api/me").cookie(manager.cookie())).andExpect(jsonPath("$.role").value("MANAGER")).andExpect(jsonPath("$.profileCompleted").value(true));
+    @Test void managerUsesIndependentIdentityInsteadOfEducationProfile()throws Exception{
+        var manager=actor("MANAGER");mvc.perform(write("PUT","/api/me/profile",manager,profile("YKS_ADAYI",0))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/me").cookie(manager.cookie())).andExpect(jsonPath("$.role").value("MANAGER")).andExpect(jsonPath("$.profileCompleted").value(false));
     }
     @Test void parallelProfileUpdatesRejectStaleFormInsteadOfLosingChanges()throws Exception{
         var member=actor("MEMBER");var gate=new CountDownLatch(1);
@@ -165,4 +166,27 @@ class ProfileCatalogIT {
         for(String table:List.of("user_profiles","tags","management_actions"))assertThatThrownBy(()->jdbc.execute("DELETE FROM "+table)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThatThrownBy(()->jdbc.execute("TRUNCATE question_likes, question_views, user_profiles,tags,management_actions, questions, question_tags, answers, question_assignments")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
+
+    @Test void optionalLinksAreValidatedPublicAndNeverExposePrivateAccountFields()throws Exception{
+        var a=actor("MEMBER");var body=profile("YKS_ADAYI",0);body.put("linkedinUrl","https://www.linkedin.com/in/ada");body.put("portfolioUrl","https://portfolio.example.test/work");
+        mvc.perform(write("PUT","/api/me/profile",a,body)).andExpect(status().isOk()).andExpect(jsonPath("$.linkedinUrl").value(body.get("linkedinUrl")));
+        var response=mvc.perform(get("/api/profiles/"+a.id())).andExpect(status().isOk()).andExpect(jsonPath("$.portfolioUrl").value(body.get("portfolioUrl"))).andExpect(jsonPath("$.name").value("Ada Yılmaz")).andReturn().getResponse().getContentAsString();
+        assertThat(response).doesNotContain("email","password","document","verification","version");
+        for(String invalid:List.of("javascript:alert(1)","data:text/html,bad","//example.test","https://user:pass@example.test","https://example.test/\\evil")){
+            body.put("version",1);body.put("portfolioUrl",invalid);mvc.perform(write("PUT","/api/me/profile",a,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.fieldErrors.portfolioUrl").exists());
+        }
+        body.put("portfolioUrl","");body.put("linkedinUrl","https://linkedin.com.example.test/in/ada");mvc.perform(write("PUT","/api/me/profile",a,body)).andExpect(status().isBadRequest());
+        body.put("linkedinUrl","");mvc.perform(write("PUT","/api/me/profile",a,body)).andExpect(status().isOk()).andExpect(jsonPath("$.linkedinUrl").isEmpty());
+        mvc.perform(write("PUT","/api/me/profile",a,body)).andExpect(status().isConflict());
+        jdbc.update("UPDATE users SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",a.id());mvc.perform(get("/api/profiles/"+a.id())).andExpect(status().isNotFound());
+        mvc.perform(get("/api/profiles/"+actor("MANAGER").id())).andExpect(status().isNotFound());
+    }
+    @Test void adminCannotCreateQuestionEvenThroughService()throws Exception{
+        var admin=actor("ADMIN");mvc.perform(write("PUT","/api/me/profile",admin,profile("YKS_ADAYI",0))).andExpect(status().isOk());
+        var content=new com.tanidikvar.api.question.dto.QuestionContent("Admin soru oluşturamaz",null,com.tanidikvar.api.question.entity.QuestionScope.GENERAL,null,null,List.of());
+        var request=new com.tanidikvar.api.question.dto.QuestionCreateRequest(UUID.randomUUID(),content);
+        mvc.perform(write("POST","/api/questions",admin,request)).andExpect(status().isForbidden());
+        assertThatThrownBy(()->questionService.create(admin.id(),request)).isInstanceOf(com.tanidikvar.api.common.error.DomainException.class).hasMessageContaining("Adminler soru oluşturamaz");
+    }
+    @Autowired com.tanidikvar.api.question.service.QuestionService questionService;
 }

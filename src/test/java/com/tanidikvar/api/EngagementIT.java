@@ -51,6 +51,7 @@ class EngagementIT {
         return new Actor(id,new Cookie("TV_ACCESS",auth.login(email,"Testing-password!").accessToken()));
     }
     MockHttpServletRequestBuilder write(String method,String path,Actor actor,Object body){
+        if((path.startsWith("/api/manager/catalog")||path.startsWith("/api/manager/university-departments"))&&body instanceof Map<?,?> map){var enriched=new HashMap<String,Object>();map.forEach((k,v)->enriched.put(k.toString(),v));enriched.putIfAbsent("reason","Test kataloğu yönetimi");body=enriched;}
         return (method.equals("PUT")?put(path):post(path)).cookie(actor.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body));
     }
     JsonNode create(Actor actor,String kind,String name)throws Exception{
@@ -64,7 +65,7 @@ class EngagementIT {
     Map<String,Object> profile(String status,long version){
         var body=new HashMap<String,Object>();body.put("firstName","Ada");body.put("lastName","Yılmaz");body.put("educationStatus",status);body.put("version",version);return body;
     }
-    Actor member(String role)throws Exception {var a=actor(role);mvc.perform(write("PUT","/api/me/profile",a,profile("YKS_ADAYI",0))).andExpect(status().isOk());return a;}
+    Actor member(String role)throws Exception {var a=actor(role);if(role.equals("MANAGER"))return a;mvc.perform(write("PUT","/api/me/profile",a,profile("YKS_ADAYI",0))).andExpect(status().isOk());return a;}
     Map<String,Object> content(String title) {var c=new HashMap<String,Object>();c.put("title",title);c.put("scope","GENERAL");c.put("tagIds",List.of());return c;}
     JsonNode question(Actor a,Map<String,Object> c)throws Exception {return mapper.readTree(mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
     JsonNode answer(Actor a,String question,String body)throws Exception {return mapper.readTree(mvc.perform(write("POST","/api/questions/"+question+"/answers",a,Map.of("body",body))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}

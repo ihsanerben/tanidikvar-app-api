@@ -56,7 +56,7 @@ public class CatalogRepository {
     public void educationStatus(UUID id,boolean deleted) {
         jdbc.update("UPDATE university_departments SET deleted_at=CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=?",deleted,id);
     }
-    public void audit(UUID actor,String action,String type,UUID id) {
-        jdbc.update("INSERT INTO management_actions(id,actor_id,action,target_type,target_id) VALUES (?,?,?,?,?)",UUID.randomUUID(),actor,action,type,id);
+    public void audit(UUID actor,String action,String type,UUID id,String reason) {
+        jdbc.update("INSERT INTO management_actions(id,actor_id,action,target_type,target_id,reason) VALUES (?,?,?,?,?,?)",UUID.randomUUID(),actor,action,type,id,reason);
     }
 }

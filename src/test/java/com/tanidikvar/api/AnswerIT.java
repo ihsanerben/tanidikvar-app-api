@@ -51,6 +51,7 @@ class AnswerIT {
         return new Actor(id,new Cookie("TV_ACCESS",auth.login(email,"Testing-password!").accessToken()));
     }
     MockHttpServletRequestBuilder write(String method,String path,Actor actor,Object body){
+        if((path.startsWith("/api/manager/catalog")||path.startsWith("/api/manager/university-departments"))&&body instanceof Map<?,?> map){var enriched=new HashMap<String,Object>();map.forEach((k,v)->enriched.put(k.toString(),v));enriched.putIfAbsent("reason","Test kataloğu yönetimi");body=enriched;}
         return (method.equals("PUT")?put(path):post(path)).cookie(actor.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body));
     }
     JsonNode create(Actor actor,String kind,String name)throws Exception{
@@ -64,11 +65,46 @@ class AnswerIT {
     Map<String,Object> profile(String status,long version){
         var body=new HashMap<String,Object>();body.put("firstName","Ada");body.put("lastName","Yılmaz");body.put("educationStatus",status);body.put("version",version);return body;
     }
-    Actor member(String role)throws Exception {var a=actor(role);mvc.perform(write("PUT","/api/me/profile",a,profile("YKS_ADAYI",0))).andExpect(status().isOk());return a;}
+    Actor member(String role)throws Exception {var a=actor(role);if(role.equals("MANAGER"))return a;mvc.perform(write("PUT","/api/me/profile",a,profile("YKS_ADAYI",0))).andExpect(status().isOk());return a;}
     Map<String,Object> content(String title) {var c=new HashMap<String,Object>();c.put("title",title);c.put("scope","GENERAL");c.put("tagIds",List.of());return c;}
     JsonNode question(Actor a,Map<String,Object> c)throws Exception {return mapper.readTree(mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
     JsonNode answer(Actor a,String question,String body)throws Exception {return mapper.readTree(mvc.perform(write("POST","/api/questions/"+question+"/answers",a,Map.of("body",body))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
     String question(Actor a)throws Exception {return question(a,content("Topluluk cevapları için örnek soru")).get("id").asText();}
+    @Test
+    void communityAnswersUseCurrentAvatarAndHideRemovedIdentity() throws Exception {
+        var owner=member("MEMBER");String q=question(owner);answer(owner,q,"Fotoğraflı deneyim paylaşımı.");
+        UUID first=UUID.randomUUID(),second=UUID.randomUUID();
+        jdbc.update("INSERT INTO stored_files(id,owner_id,purpose,storage_key,original_name,content_type,byte_size,upload_status) VALUES (?,?,'AVATAR',?,'avatar.png','image/png',100,'READY')",first,owner.id(),first.toString());
+        mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].avatarFileId").value(first.toString()));
+        jdbc.update("UPDATE stored_files SET deleted_at=clock_timestamp() WHERE id=?",first);
+        jdbc.update("INSERT INTO stored_files(id,owner_id,purpose,storage_key,original_name,content_type,byte_size,upload_status) VALUES (?,?,'AVATAR',?,'avatar.png','image/png',100,'READY')",second,owner.id(),second.toString());
+        mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].avatarFileId").value(second.toString()));
+        mvc.perform(get("/api/me/answers").cookie(owner.cookie())).andExpect(jsonPath("$.items[0].answer.avatarFileId").value(second.toString()));
+        jdbc.update("UPDATE user_profiles SET deleted_at=clock_timestamp() WHERE user_id=?",owner.id());
+        mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].avatarFileId").isEmpty()).andExpect(jsonPath("$.items[0].authorId").isEmpty());
+    }
+    @Test
+    void ownHistoryIsPrivatePaginatedAndKeepsRemovedAnswersButHidesHiddenQuestions() throws Exception {
+        var owner=member("MEMBER");var other=member("MEMBER");
+        var q=question(owner,content("Yorum geçmişi için bir soru"));String id=q.get("id").asText();
+        var a=answer(owner,id,"Yalnız bana ait deneyim paylaşımı.");
+        answer(other,id,"Başka kullanıcının deneyim paylaşımı.");
+        mvc.perform(get("/api/me/answers")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/me/answers").cookie(owner.cookie()).param("size","1"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].answer.id").value(a.get("id").asText()))
+                .andExpect(jsonPath("$.items[0].questionTitle").value("Yorum geçmişi için bir soru"));
+        mvc.perform(get("/api/me/answers").cookie(owner.cookie()).param("page","1").param("size","1"))
+                .andExpect(jsonPath("$.items.length()").value(0));
+        mvc.perform(get("/api/me/answers").cookie(owner.cookie()).param("size","101")).andExpect(status().isBadRequest());
+        jdbc.update("UPDATE answers SET deleted_at=CURRENT_TIMESTAMP,moderated_at=CURRENT_TIMESTAMP WHERE id=?",UUID.fromString(a.get("id").asText()));
+        mvc.perform(get("/api/me/answers").cookie(owner.cookie()))
+                .andExpect(jsonPath("$.items[0].answer.deletedAt").isNotEmpty())
+                .andExpect(jsonPath("$.items[0].answer.moderatedAt").isNotEmpty());
+        jdbc.update("UPDATE questions SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",UUID.fromString(id));
+        mvc.perform(get("/api/me/answers").cookie(owner.cookie())).andExpect(jsonPath("$.totalElements").value(0));
+    }
+
     @Test void publicReadingAndProfileCsrfOwnershipAndKindAreEnforced()throws Exception {
         var owner=member("MEMBER");var admin=member("ADMIN");var incomplete=actor("MEMBER");String q=question(owner),path="/api/questions/"+q+"/answers";
         mvc.perform(get(path)).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
@@ -81,7 +117,7 @@ class AnswerIT {
         mvc.perform(get(path)).andExpect(jsonPath("$.items[0].email").doesNotExist());
     }
     @Test void eachAuthorHasOneAnswerAndPrivateEndpointOnlyReturnsTheirOwn()throws Exception {
-        var owner=member("MEMBER");var other=member("MANAGER");String q=question(owner);
+        var owner=member("MEMBER");var other=member("ADMIN");String q=question(owner);
         mvc.perform(get("/api/questions/"+q+"/my-answer").cookie(owner.cookie())).andExpect(status().isNoContent());
         var first=answer(owner,q,"Birinci kişinin özgün deneyimi");var second=answer(other,q,"İkinci kişinin özgün deneyimi");
         mvc.perform(get("/api/questions/"+q+"/answers").param("size","1").param("page","1")).andExpect(jsonPath("$.totalElements").value(2)).andExpect(jsonPath("$.items[0].id").value(second.get("id").asText()));
@@ -149,7 +185,7 @@ class AnswerIT {
         assertThat(jdbc.queryForObject("SELECT deleted_at IS NULL FROM answers WHERE id=?",Boolean.class,UUID.fromString(answer.get("id").asText()))).isTrue();
     }
     @Test void authorityChangesDoNotChangeAnswerKindAndDeletedAccountsAreAnonymized()throws Exception {
-        var a=member("ADMIN");String q=question(a);answer(a,q,"Adminin topluluk bölümündeki cevabı");
+        var a=member("ADMIN");String q=question(member("MEMBER"));answer(a,q,"Adminin topluluk bölümündeki cevabı");
         jdbc.update("UPDATE users SET authority='MEMBER' WHERE id=?",a.id());
         mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].answerKind").value("COMMUNITY"));
         jdbc.update("UPDATE users SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",a.id());

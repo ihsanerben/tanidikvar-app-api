@@ -31,8 +31,11 @@ public class EngagementService {
         repository.setLike(id,actor,request.liked(),current.version());return mapper.toResponse(repository.like(id,actor));
     }
     @Transactional
-    public void view(UUID id,ViewRequest request) {
+    public void view(UUID id,ViewRequest request) { view(id,request,null); }
+    @Transactional
+    public void view(UUID id,ViewRequest request,UUID actor) {
         questions.lock(id);
+        if(actor!=null && accounts.lockActive(actor).getAuthority()==com.tanidikvar.api.auth.entity.Authority.MANAGER)return;
         if(!repository.view(id,request.openingEventId()).equals(id))throw new DomainException(409,"REQUEST_CONFLICT","Bu açılış kimliği başka bir soruda kullanılmış.");
     }
 }

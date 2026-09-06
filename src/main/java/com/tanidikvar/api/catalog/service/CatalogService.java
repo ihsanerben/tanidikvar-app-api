@@ -59,51 +59,55 @@ public class CatalogService {
     private void checkVersion(long actual,long requested) {
         if(actual!=requested) throw new DomainException(409,"STALE_VERSION","Bu kayıt değişmiş. Güncel bilgileri yükleyip tekrar dene.");
     }
+    private String reason(String reason) { if(reason==null||reason.isBlank()||reason.strip().length()>1000)throw new DomainException(400,"REASON_REQUIRED","İşlem gerekçesi gerekiyor.");return reason.strip(); }
     private DomainException missing() { return new DomainException(404,"NOT_FOUND","Kayıt bulunamadı."); }
     @Transactional
-    public CatalogResponse create(UUID actor,CatalogKind kind,String name) {
+    public CatalogResponse create(UUID actor,CatalogKind kind,String name) { return create(actor,kind,name,null); }
+    @Transactional
+    public CatalogResponse create(UUID actor,CatalogKind kind,String name,String reason) {
         var account=accounts.lockActive(actor);
         if(account.getAuthority()!=Authority.MANAGER) {
             if(kind!=CatalogKind.TAG || account.getAuthority()!=Authority.ADMIN) throw new DomainException(403,"ACCESS_DENIED","Bu işlem için yetkin yok.");
             interaction.requireCompleted(actor);
         }
+        if(account.getAuthority()==Authority.MANAGER) reason=reason(reason);
         UUID id=UUID.randomUUID(); String clean=CatalogNames.clean(name);
-        catalog.create(kind,id,clean,CatalogNames.normalized(clean),actor); catalog.audit(actor,"CREATE",kind.name(),id);
+        catalog.create(kind,id,clean,CatalogNames.normalized(clean),actor); catalog.audit(actor,"CREATE",kind.name(),id,reason);
         return mapper.toResponse(catalog.lock(kind,id).orElseThrow(this::missing));
     }
     @Transactional
     public CatalogResponse rename(UUID actor,CatalogKind kind,UUID id,CatalogUpdateRequest request) {
-        manager(actor); var current=catalog.lock(kind,id).orElseThrow(this::missing); checkVersion(current.version(),request.version());
-        String name=CatalogNames.clean(request.name()); catalog.rename(kind,id,name,CatalogNames.normalized(name)); catalog.audit(actor,"RENAME",kind.name(),id);
+        manager(actor); reason(request.reason()); var current=catalog.lock(kind,id).orElseThrow(this::missing); checkVersion(current.version(),request.version());
+        String name=CatalogNames.clean(request.name()); if(!current.name().equals(name)){catalog.rename(kind,id,name,CatalogNames.normalized(name)); catalog.audit(actor,"RENAME",kind.name(),id,request.reason().strip());}
         return mapper.toResponse(catalog.lock(kind,id).orElseThrow(this::missing));
     }
     @Transactional
     public CatalogResponse status(UUID actor,CatalogKind kind,UUID id,CatalogStatusRequest request) {
-        manager(actor); var current=catalog.lock(kind,id).orElseThrow(this::missing); checkVersion(current.version(),request.version());
+        manager(actor); reason(request.reason()); var current=catalog.lock(kind,id).orElseThrow(this::missing); checkVersion(current.version(),request.version());
         if((current.deletedAt()!=null)!=request.deleted()) {
-            catalog.status(kind,id,request.deleted()); catalog.audit(actor,request.deleted()?"SOFT_DELETE":"RESTORE",kind.name(),id);
+            catalog.status(kind,id,request.deleted()); catalog.audit(actor,request.deleted()?"SOFT_DELETE":"RESTORE",kind.name(),id,request.reason().strip());
         }
         return mapper.toResponse(catalog.lock(kind,id).orElseThrow(this::missing));
     }
     @Transactional
     public EducationResponse createEducation(UUID actor,EducationCreateRequest request) {
-        manager(actor);
+        manager(actor); reason(request.reason());
         var university=catalog.lock(CatalogKind.UNIVERSITY,request.universityId()).orElseThrow(this::missing);
         var department=catalog.lock(CatalogKind.DEPARTMENT,request.departmentId()).orElseThrow(this::missing);
         if(university.deletedAt()!=null || department.deletedAt()!=null) throw new DomainException(400,"INACTIVE_EDUCATION","Aktif üniversite ve bölüm seç.");
-        UUID id=UUID.randomUUID(); catalog.createEducation(id,university.id(),department.id()); catalog.audit(actor,"CREATE","UNIVERSITY_DEPARTMENT",id);
+        UUID id=UUID.randomUUID(); catalog.createEducation(id,university.id(),department.id()); catalog.audit(actor,"CREATE","UNIVERSITY_DEPARTMENT",id,request.reason().strip());
         return education(id);
     }
     @Transactional
     public EducationResponse educationStatus(UUID actor,UUID id,CatalogStatusRequest request) {
-        manager(actor); var current=lockEducation(id,false); checkVersion(current.version(),request.version());
+        manager(actor); reason(request.reason()); var current=lockEducation(id,false); checkVersion(current.version(),request.version());
         if(!request.deleted()) {
             var university=catalog.lock(CatalogKind.UNIVERSITY,current.universityId()).orElseThrow(this::missing);
             var department=catalog.lock(CatalogKind.DEPARTMENT,current.departmentId()).orElseThrow(this::missing);
             if(university.deletedAt()!=null || department.deletedAt()!=null) throw new DomainException(400,"INACTIVE_EDUCATION","Önce üniversite ve bölümü etkinleştir.");
         }
         if((current.deletedAt()!=null)!=request.deleted()) {
-            catalog.educationStatus(id,request.deleted()); catalog.audit(actor,request.deleted()?"SOFT_DELETE":"RESTORE","UNIVERSITY_DEPARTMENT",id);
+            catalog.educationStatus(id,request.deleted()); catalog.audit(actor,request.deleted()?"SOFT_DELETE":"RESTORE","UNIVERSITY_DEPARTMENT",id,request.reason().strip());
         }
         return education(id);
     }

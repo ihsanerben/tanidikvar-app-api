@@ -25,5 +25,9 @@ public class ApplicationController {
  public ApplicationResponse decide(@AuthenticationPrincipal SessionPrincipal p,@PathVariable UUID id,@Valid @RequestBody ApplicationDecision request){return applications.decide(p.userId(),id,request);}
  @PostMapping("/api/manager/users/{id}/revoke-admin") @PreAuthorize("hasRole('MANAGER')") @ResponseStatus(HttpStatus.NO_CONTENT)
  public void revoke(@AuthenticationPrincipal SessionPrincipal p,@PathVariable UUID id,@Valid @RequestBody RevokeRequest request){applications.revoke(p.userId(),id,request);}
+ @GetMapping("/api/manager/admin-applications/{id}") @PreAuthorize("hasRole('MANAGER')")
+ public ApplicationResponse detail(@AuthenticationPrincipal SessionPrincipal p,@PathVariable UUID id){return applications.detail(p.userId(),id);}
+ @GetMapping("/api/manager/users/{id}/applications") @PreAuthorize("hasRole('MANAGER')")
+ public PageResponse<ApplicationResponse> history(@AuthenticationPrincipal SessionPrincipal p,@PathVariable UUID id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return applications.history(p.userId(),id,page,size);}
 }
 

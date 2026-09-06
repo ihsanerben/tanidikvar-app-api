@@ -38,12 +38,65 @@ class FoundationIT {
     @Autowired JdbcTemplate jdbc;
 
     @Test
+    @org.springframework.transaction.annotation.Transactional
+    void starterCatalogHasRealRelationshipsAndDoesNotReactivateExistingDecisions() throws Exception {
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM universities",Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM departments",Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM tags",Integer.class)).isZero();
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/seed-local-catalog.sql")));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM tags WHERE created_by IS NULL",Integer.class)).isEqualTo(19);
+        mvc.perform(get("/api/universities").param("size", "10"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.items.length()").value(10));
+        assertThat(jdbc.queryForObject("SELECT count(DISTINCT department_id) FROM university_departments WHERE university_id=(SELECT id FROM universities WHERE name='Dokuz Eylül Üniversitesi')", Integer.class)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM university_departments WHERE university_id IN (SELECT id FROM universities WHERE name LIKE '% Üniversitesi')", Integer.class)).isEqualTo(75);
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM university_departments ud JOIN universities u ON u.id=ud.university_id
+                JOIN departments d ON d.id=ud.department_id
+                WHERE u.name='Dokuz Eylül Üniversitesi'
+                """, Integer.class)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("""
+                SELECT count(*) FROM university_departments ud JOIN universities u ON u.id=ud.university_id
+                JOIN departments d ON d.id=ud.department_id
+                WHERE u.name='İstanbul Teknik Üniversitesi' AND d.name IN ('Tıp','Hukuk','İşletme','Elektrik-Elektronik Mühendisliği')
+                """, Integer.class)).isZero();
+        jdbc.update("UPDATE tags SET deleted_at=CURRENT_TIMESTAMP WHERE normalized_name='kampüs'");
+        jdbc.update("UPDATE universities SET deleted_at=CURRENT_TIMESTAMP WHERE name='Boğaziçi Üniversitesi'");
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/seed-local-catalog.sql")));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM tags",Integer.class)).isEqualTo(19);
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM tags WHERE normalized_name='kampüs'",Boolean.class)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM universities WHERE name='Boğaziçi Üniversitesi' AND deleted_at IS NULL", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM university_departments WHERE university_id IN (SELECT id FROM universities WHERE name LIKE '% Üniversitesi')", Integer.class)).isEqualTo(75);
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void localCleanupOnlySoftDeletesExactSyntheticIdentitiesAndPreservesOtherAccounts() throws Exception {
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/seed-local-catalog.sql")));
+        UUID synthetic=UUID.randomUUID(), preserved=UUID.randomUUID(), question=UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO users(id,email,password_hash,created_at,updated_at) VALUES
+                (?,?,'test-only',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP),
+                (?,?,'test-only',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)
+                """, synthetic,"browser-profile-"+synthetic+"@example.test",preserved,"other-"+preserved+"@example.test");
+        jdbc.update("INSERT INTO questions(id,author_id,request_id,title,scope) VALUES (?,?,?,'Synthetic question for cleanup','GENERAL')", question,synthetic,UUID.randomUUID());
+        UUID catalog=UUID.randomUUID();
+        jdbc.update("INSERT INTO universities(id,name,normalized_name) VALUES (?,'Test Üniversitesi abcdef12','test üniversitesi abcdef12')",catalog);
+        Long preservedVersion=jdbc.queryForObject("SELECT version FROM users WHERE id=?",Long.class,preserved);
+        jdbc.execute(java.nio.file.Files.readString(java.nio.file.Path.of("scripts/cleanup-local-test-data.sql")));
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM users WHERE id=?",Boolean.class,synthetic)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM questions WHERE id=?",Boolean.class,question)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM universities WHERE id=?",Boolean.class,catalog)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT deleted_at IS NULL AND version=? FROM users WHERE id=?",Boolean.class,preservedVersion,preserved)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM universities WHERE name='Dokuz Eylül Üniversitesi' AND deleted_at IS NULL",Integer.class)).isEqualTo(1);
+    }
+
+    @Test
     void healthChecksRealDatabaseAndReturnsRequestId() throws Exception {
         mvc.perform(get("/api/health"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"))
                 .andExpect(jsonPath("$.database").value("up"))
                 .andExpect(header().exists("X-Request-ID"));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(10);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(13);
     }
 
     @Test
@@ -98,7 +151,7 @@ class FoundationIT {
             assertThatThrownBy(() -> jdbc.execute("DELETE FROM " + table))
                     .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         }
-        assertThatThrownBy(() -> jdbc.execute("TRUNCATE question_likes, question_views, universities, departments, university_departments, user_profiles, questions, question_tags, answers, admin_applications, stored_files, users, auth_sessions, auth_action_tokens, tags, management_actions, question_assignments"))
+        assertThatThrownBy(() -> jdbc.execute("TRUNCATE manager_profiles, question_likes, question_views, universities, departments, university_departments, user_profiles, questions, question_tags, answers, admin_applications, stored_files, users, auth_sessions, auth_action_tokens, tags, management_actions, question_assignments"))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThatThrownBy(() -> jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)", UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);

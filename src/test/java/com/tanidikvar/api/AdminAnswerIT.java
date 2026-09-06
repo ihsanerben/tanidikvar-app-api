@@ -49,7 +49,8 @@ class AdminAnswerIT {
   jdbc.update("UPDATE users SET authority='ADMIN',active_verification_application_id=? WHERE id=?",v,a.id());return v;
  }
  Actor admin(){var a=member();verification(a,"UNIVERSITE_OGRENCISI");return a;}
- String question(Actor a)throws Exception{return mapper.readTree(mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",Map.of("title","Üniversite deneyimleri hakkında soru","scope","GENERAL","tagIds",List.of())))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();}
+ String question(Actor ignored)throws Exception{var owner=member();return mapper.readTree(mvc.perform(write("POST","/api/questions",owner,Map.of("requestId",UUID.randomUUID(),"content",Map.of("title","Üniversite deneyimleri hakkında soru","scope","GENERAL","tagIds",List.of())))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();}
+ String questionAs(Actor owner)throws Exception{return mapper.readTree(mvc.perform(write("POST","/api/questions",owner,Map.of("requestId",UUID.randomUUID(),"content",Map.of("title","Üniversite deneyimleri hakkında soru","scope","GENERAL","tagIds",List.of())))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();}
  void assign(Actor a,String q,long version)throws Exception{mvc.perform(write("PUT","/api/questions/"+q+"/assignment",a,Map.of("assigned",true,"version",version))).andExpect(status().isOk());}
  JsonNode publish(Actor a,String q)throws Exception{return mapper.readTree(mvc.perform(write("POST","/api/questions/"+q+"/admin-answers",a,Map.of("body","Üniversitede edindiğim gerçek deneyim."))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
  String path(JsonNode a){return "/api/admin-answers/"+a.get("id").asText();}
@@ -134,8 +135,8 @@ class AdminAnswerIT {
   mvc.perform(get("/api/me/admin-answers").cookie(a.cookie())).andExpect(jsonPath("$.totalElements").value(1));
  }
  @Test void archivedQuestionsAllowRemovalButNoEditRestoreOrNewAssignment()throws Exception{
-  var a=admin();String q=question(a);assign(a,q,0);var answer=publish(a,q);
-  mvc.perform(write("POST","/api/questions/"+q+"/archive",a,Map.of("version",0))).andExpect(status().isOk());
+  var a=admin();var owner=member();String q=questionAs(owner);assign(a,q,0);var answer=publish(a,q);
+  mvc.perform(write("POST","/api/questions/"+q+"/archive",owner,Map.of("version",0))).andExpect(status().isOk());
   mvc.perform(get("/api/admins/"+a.id()+"/answers")).andExpect(jsonPath("$.totalElements").value(1));
   mvc.perform(write("PUT",path(answer),a,Map.of("body","Arşivde değişiklik denemesi","version",0))).andExpect(status().isConflict());
   mvc.perform(write("PUT",path(answer)+"/status",a,Map.of("deleted",true,"version",0))).andExpect(status().isOk());
