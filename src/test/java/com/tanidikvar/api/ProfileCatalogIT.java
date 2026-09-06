@@ -153,10 +153,10 @@ class ProfileCatalogIT {
     }
     @Test void adminsOnlyCreateTagsAndNeedACompletedProfile()throws Exception{
         var admin=actor("ADMIN");var manager=actor("MANAGER");
-        mvc.perform(write("POST","/api/tags",admin,Map.of("name","Admin "+UUID.randomUUID()))).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("PROFILE_REQUIRED"));
+        mvc.perform(write("POST","/api/tags",admin,Map.of("name","Admin "+UUID.randomUUID()))).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
         var link=education(manager);var body=profile("UNIVERSITE_OGRENCISI",0);body.put("universityDepartmentId",link.get("id").asText());
         mvc.perform(write("PUT","/api/me/profile",admin,body)).andExpect(status().isOk());
-        mvc.perform(write("POST","/api/tags",admin,Map.of("name","Admin "+UUID.randomUUID()))).andExpect(status().isCreated());
+        mvc.perform(write("POST","/api/tags",admin,Map.of("name","Admin "+UUID.randomUUID()))).andExpect(status().isForbidden());
         mvc.perform(get("/api/manager/catalog/TAG").cookie(admin.cookie())).andExpect(status().isForbidden());
         assertThatThrownBy(()->catalog.create(admin.id(),CatalogKind.UNIVERSITY,"Unauthorized")).isInstanceOf(com.tanidikvar.api.common.error.DomainException.class);
         jdbc.update("UPDATE users SET authority='MEMBER' WHERE id=?",admin.id());

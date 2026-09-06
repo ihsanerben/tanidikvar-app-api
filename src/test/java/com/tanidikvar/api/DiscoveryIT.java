@@ -108,7 +108,7 @@ class DiscoveryIT {
         mvc.perform(get("/api/popular").param("period","FOREVER")).andExpect(status().isBadRequest());mvc.perform(get("/api/questions").param("adminId","invalid")).andExpect(status().isBadRequest());
     }
     @Test void adminSearchUsesPublicVerifiedNamesAndAnsweredQuestionFilter()throws Exception {
-        String group=UUID.randomUUID().toString();UUID active=user(),former=user(),unverified=user();UUID v=verification(active,group+" IŞIK"),old=verification(former,group+" Çağrı");jdbc.update("UPDATE users SET authority='MEMBER',active_verification_application_id=NULL WHERE id=?",former);
+        String group=UUID.randomUUID().toString();UUID active=user(),former=user(),unverified=user();jdbc.update("UPDATE user_profiles SET first_name=? WHERE user_id=?",group+" IŞIK",active);jdbc.update("UPDATE user_profiles SET first_name=? WHERE user_id=?",group+" Çağrı",former);UUID v=verification(active,group+" IŞIK"),old=verification(former,group+" Çağrı");jdbc.update("UPDATE users SET authority='MEMBER',active_verification_application_id=NULL WHERE id=?",former);
         UUID q=question(active,group+" Ortak cevap"),community=question(active,group+" Topluluk katkısı");answer(q,active,v,NOW.minusSeconds(1));answer(q,former,old,NOW.minusSeconds(1));answer(community,active,null,NOW.minusSeconds(1));
         var result=list("/api/admins",Map.of("q",group));assertThat(ids(result)).containsExactly(active.toString(),former.toString());assertThat(result.get("items").get(1).get("activeAdmin").asBoolean()).isFalse();
         assertThat(ids(list("/api/admins",Map.of("q",group+" isik")))).containsExactly(active.toString());

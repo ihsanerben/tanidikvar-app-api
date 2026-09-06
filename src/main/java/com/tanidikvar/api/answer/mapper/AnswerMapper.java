@@ -6,6 +6,6 @@ import org.springframework.stereotype.Component;
 public class AnswerMapper {
     public AnswerResponse toResponse(Answer a) {
         return new AnswerResponse(a.id(),a.questionId(),a.authorName()==null?null:a.authorId(),a.authorName()==null?"Katılımcı":a.authorName(),
-                a.authorName()==null?null:a.avatarFileId(),"COMMUNITY",a.body(),a.publishedAt(),a.editedAt(),a.deletedAt(),a.moderatedAt(),a.version());
+                a.authorName()==null?null:a.avatarFileId(),a.authorName()==null?null:a.educationStatus(),"COMMUNITY",a.body(),a.publishedAt(),a.editedAt(),a.deletedAt(),a.moderatedAt(),a.version());
     }
 }

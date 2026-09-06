@@ -48,6 +48,17 @@ class ApplicationIT {
  static byte[] pdf(){return "%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII);}
  RequestBuilder upload(Actor a,UUID request,long version,byte[] bytes){return multipart("/api/me/admin-applications").file(new MockMultipartFile("document","belge.pdf","application/pdf",bytes)).file(new MockMultipartFile("request","","application/json",mapper.writeValueAsBytes(Map.of("requestId",request,"profileVersion",version)))).cookie(a.cookie()).with(csrf());}
  JsonNode submit(Actor a)throws Exception{return mapper.readTree(mvc.perform(upload(a,UUID.randomUUID(),1,pdf())).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
+ // Simulate a pending application created under the previous re-verification policy.
+ JsonNode legacyPending(Actor a)throws Exception{
+  String verification=active(a);
+  jdbc.update("UPDATE users SET authority='MEMBER',active_verification_application_id=NULL WHERE id=?",a.id());
+  try{return submit(a);}finally{jdbc.update("UPDATE users SET authority='ADMIN',active_verification_application_id=? WHERE id=?",UUID.fromString(verification),a.id());}
+ }
+ @Test void approvedAdminSeesHistoryButCannotSubmitAgain()throws Exception{
+  var a=student();var m=actor("MANAGER");var approved=submit(a);approve(m,approved);
+  mvc.perform(upload(a,UUID.randomUUID(),1,pdf())).andExpect(status().isForbidden());
+  mvc.perform(get("/api/me/admin-applications").cookie(a.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+ }
  String decision(JsonNode a){return "/api/manager/admin-applications/"+a.get("id").asText()+"/decision";}
  void approve(Actor m,JsonNode a)throws Exception{mvc.perform(write(decision(a),m,Map.of("status","APPROVED","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.activeVerification").value(true));}
  String role(Actor a){return jdbc.queryForObject("SELECT authority FROM users WHERE id=?",String.class,a.id());}
@@ -93,13 +104,13 @@ class ApplicationIT {
   mvc.perform(write(decision(first),m,Map.of("status","REJECTED","version",0,"reason","Belge okunmuyor."))).andExpect(status().isOk());
   assertThat(role(a)).isEqualTo("MEMBER");
   var approved=submit(a);approve(m,approved);
-  var second=submit(a);mvc.perform(write(decision(second),m,Map.of("status","REJECTED","version",0,"reason","Yeni belge uygun değil."))).andExpect(status().isOk());
+  var second=legacyPending(a);mvc.perform(write(decision(second),m,Map.of("status","REJECTED","version",0,"reason","Yeni belge uygun değil."))).andExpect(status().isOk());
   assertThat(role(a)).isEqualTo("ADMIN");assertThat(active(a)).isEqualTo(approved.get("id").asText());
-  var third=submit(a);approve(m,third);assertThat(active(a)).isEqualTo(third.get("id").asText());
+  var third=legacyPending(a);approve(m,third);assertThat(active(a)).isEqualTo(third.get("id").asText());
   mvc.perform(write(decision(first),m,Map.of("status","APPROVED","version",1))).andExpect(status().isConflict());
  }
  @Test void revokeClosesPendingAndOldDecisionCannotRestoreAuthority()throws Exception{
-  var a=student();var m=actor("MANAGER");var first=submit(a);approve(m,first);var pending=submit(a);
+  var a=student();var m=actor("MANAGER");var first=submit(a);approve(m,first);var pending=legacyPending(a);
   var body=Map.of("verificationId",first.get("id").asText(),"reason","Doğrulama geçersiz.");
   mvc.perform(post("/api/manager/users/"+a.id()+"/revoke-admin").cookie(m.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body))).andExpect(status().isNoContent());
   assertThat(role(a)).isEqualTo("MEMBER");assertThat(active(a)).isNull();
@@ -147,7 +158,7 @@ class ApplicationIT {
   mvc.perform(get("/api/files/"+failed+"/download").cookie(a.cookie())).andExpect(status().isNotFound());
  }
  @Test void concurrentReverificationApprovalAndRevocationCannotRestoreByAccident()throws Exception{
-  var a=student();var m=actor("MANAGER");var n=actor("MANAGER");var first=submit(a);approve(m,first);var pending=submit(a);var gate=new CountDownLatch(1);
+  var a=student();var m=actor("MANAGER");var n=actor("MANAGER");var first=submit(a);approve(m,first);var pending=legacyPending(a);var gate=new CountDownLatch(1);
   try(var pool=Executors.newFixedThreadPool(2)){
    var approval=pool.submit(()->{gate.await();return mvc.perform(write(decision(pending),m,Map.of("status","APPROVED","version",0))).andReturn().getResponse().getStatus();});
    var removal=pool.submit(()->{gate.await();return mvc.perform(post("/api/manager/users/"+a.id()+"/revoke-admin").cookie(n.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("verificationId",first.get("id").asText(),"reason","Yeniden kontrol gerekiyor.")))).andReturn().getResponse().getStatus();});
@@ -168,7 +179,7 @@ class ApplicationIT {
   assertThat(Files.exists(storage.resolve(app.get("documentFileId").asText()))).isTrue();
  }
  @Test void revokeAuditFailureRollsBackAuthorityAndPendingClosure()throws Exception{
-  var a=student();var m=actor("MANAGER");var first=submit(a);approve(m,first);var pending=submit(a);
+  var a=student();var m=actor("MANAGER");var first=submit(a);approve(m,first);var pending=legacyPending(a);
   jdbc.execute("CREATE FUNCTION fail_revoke_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.target_id='"+a.id()+"'::uuid AND NEW.action='REVOKE_ADMIN' THEN RAISE EXCEPTION 'test failure'; END IF; RETURN NEW; END $$");
   jdbc.execute("CREATE TRIGGER fail_revoke_audit BEFORE INSERT ON management_actions FOR EACH ROW EXECUTE FUNCTION fail_revoke_audit()");
   try{
