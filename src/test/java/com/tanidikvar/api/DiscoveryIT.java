@@ -111,6 +111,7 @@ class DiscoveryIT {
         String group=UUID.randomUUID().toString();UUID active=user(),former=user(),unverified=user();jdbc.update("UPDATE user_profiles SET first_name=? WHERE user_id=?",group+" IŞIK",active);jdbc.update("UPDATE user_profiles SET first_name=? WHERE user_id=?",group+" Çağrı",former);UUID v=verification(active,group+" IŞIK"),old=verification(former,group+" Çağrı");jdbc.update("UPDATE users SET authority='MEMBER',active_verification_application_id=NULL WHERE id=?",former);
         UUID q=question(active,group+" Ortak cevap"),community=question(active,group+" Topluluk katkısı");answer(q,active,v,NOW.minusSeconds(1));answer(q,former,old,NOW.minusSeconds(1));answer(community,active,null,NOW.minusSeconds(1));
         var result=list("/api/admins",Map.of("q",group));assertThat(ids(result)).containsExactly(active.toString(),former.toString());assertThat(result.get("items").get(1).get("activeAdmin").asBoolean()).isFalse();
+        assertThat(ids(list("/api/admins",Map.of("q",group,"activeOnly","true")))).containsExactly(active.toString());
         assertThat(ids(list("/api/admins",Map.of("q",group+" isik")))).containsExactly(active.toString());
         assertThat(result.toString()).doesNotContain("email","documentFileId","storageKey","test-hash",unverified.toString());
         assertThat(ids(list("/api/questions",Map.of("adminId",active.toString())))).containsExactly(q.toString());assertThat(ids(list("/api/popular",Map.of("adminId",former.toString())))).containsExactly(q.toString());
