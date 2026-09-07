@@ -16,10 +16,9 @@ public class PublicAdminProfileService {
  @Transactional(readOnly=true)
  public PublicAdminProfileResponse get(UUID id){return profiles.find(id).map(mapper::toResponse).orElseThrow(()->new DomainException(404,"NOT_FOUND","Admin profili bulunamadı."));}
  @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
- public PageResponse<PublicAdminProfileResponse> search(String query,int page,int size) {
+ public PageResponse<PublicAdminProfileResponse> search(String query,boolean activeOnly,int page,int size) {
   SearchQuery.page(page,size);String q=SearchQuery.clean(query);
-  return new PageResponse<>(profiles.search(q,page,size).stream().map(mapper::toResponse).toList(),page,size,profiles.count(q));
+  return new PageResponse<>(profiles.search(q,activeOnly,page,size).stream().map(mapper::toResponse).toList(),page,size,profiles.count(q,activeOnly));
  }
 
 }
-
