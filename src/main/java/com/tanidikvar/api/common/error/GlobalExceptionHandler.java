@@ -56,7 +56,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler({DataAccessException.class, CannotCreateTransactionException.class})
     ResponseEntity<ApiError> database(Exception error, HttpServletRequest request) {
-        log.error("database_unavailable requestId={} errorType={}", request.getAttribute("requestId"), error.getClass().getSimpleName());
+        log.error("database_unavailable requestId={} errorType={}",
+                request.getAttribute("requestId"), error.getClass().getSimpleName(), error);
         return ResponseEntity.status(503).body(ApiErrors.create(request, 503, "SERVICE_UNAVAILABLE", "Hizmete şu anda ulaşılamıyor."));
     }
 
@@ -85,7 +86,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     ResponseEntity<ApiError> unexpected(Exception error, HttpServletRequest request) {
-        log.error("request_failed requestId={} errorType={}", request.getAttribute("requestId"), error.getClass().getSimpleName());
+        log.error("request_failed requestId={} errorType={}",
+                request.getAttribute("requestId"), error.getClass().getSimpleName(), error);
         return ResponseEntity.internalServerError().body(ApiErrors.create(request, 500, "INTERNAL_ERROR", "İşlem tamamlanamadı."));
     }
 }
