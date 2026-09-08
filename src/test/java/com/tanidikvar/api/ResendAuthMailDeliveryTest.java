@@ -2,7 +2,9 @@ package com.tanidikvar.api;
 
 import com.tanidikvar.api.auth.service.AuthMailMessage;
 import com.tanidikvar.api.auth.service.ResendAuthMailDelivery;
+import com.tanidikvar.api.config.RestClientConfiguration;
 import org.junit.jupiter.api.Test;
+import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
@@ -11,6 +13,13 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
 
 class ResendAuthMailDeliveryTest {
+    @Test
+    void providesTheRestClientBuilderRequiredByTheProductionDelivery() {
+        try (var context = new AnnotationConfigApplicationContext(RestClientConfiguration.class)) {
+            context.getBean(RestClient.Builder.class);
+        }
+    }
+
     @Test
     void sendsTheTransactionalMessageThroughTheHttpsApi() {
         var builder = RestClient.builder();
