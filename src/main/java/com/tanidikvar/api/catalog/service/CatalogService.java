@@ -140,4 +140,18 @@ public class CatalogService {
         }
         return new CatalogBulkImportResponse(universityCreates,departmentCreates,matchCreates,skipped);
     }
+    @Transactional
+    public TagBulkImportResponse bulkImportTags(UUID actor,TagBulkImportRequest request) {
+        manager(actor); String reason=reason(request.reason());
+        int created=0,skipped=0;
+        for(String raw:request.tags()) {
+            String name=CatalogNames.clean(raw),normalized=CatalogNames.normalized(name);
+            if(catalog.byNormalizedName(CatalogKind.TAG,normalized).isPresent()) { skipped++; continue; }
+            UUID id=UUID.randomUUID();
+            catalog.create(CatalogKind.TAG,id,name,normalized,actor);
+            catalog.audit(actor,"BULK_CREATE","TAG",id,reason);
+            created++;
+        }
+        return new TagBulkImportResponse(created,skipped);
+    }
 }

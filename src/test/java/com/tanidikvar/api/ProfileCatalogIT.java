@@ -88,6 +88,21 @@ class ProfileCatalogIT {
         mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM universities WHERE name=?",Integer.class,name)).isZero();
     }
+    @Test void managerBulkImportsTagsAndSkipsNormalizedDuplicates()throws Exception{
+        var manager=actor("MANAGER");String suffix=UUID.randomUUID().toString();String first="Toplu Tag "+suffix,second="Başka Tag "+suffix;
+        var body=Map.of("tags",List.of(first,"  "+first.toLowerCase(Locale.forLanguageTag("tr"))+"  ",second),"reason","Toplu tag listesi");
+        mvc.perform(write("POST","/api/manager/catalog/tags/bulk-import",manager,body)).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.tagsCreated").value(2)).andExpect(jsonPath("$.skipped").value(1));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM tags WHERE name IN (?,?)",Integer.class,first,second)).isEqualTo(2);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM management_actions WHERE action='BULK_CREATE' AND target_type='TAG' AND reason='Toplu tag listesi'",Integer.class)).isGreaterThanOrEqualTo(2);
+        mvc.perform(write("POST","/api/manager/catalog/tags/bulk-import",actor("MEMBER"),Map.of("tags",List.of("Yetkisiz "+suffix),"reason","Yetkisiz"))).andExpect(status().isForbidden());
+    }
+    @Test void bulkTagImportValidatesWholeRequestBeforeWriting()throws Exception{
+        var manager=actor("MANAGER");String valid="Yazılmaması gereken "+UUID.randomUUID();
+        mvc.perform(write("POST","/api/manager/catalog/tags/bulk-import",manager,Map.of("tags",List.of(valid," "),"reason","Validation kontrolü")))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM tags WHERE name=?",Integer.class,valid)).isZero();
+    }
     @Test void candidateCompletionChangesCurrentRoleAndEnablesInteraction()throws Exception{
         var member=actor("MEMBER");
         mvc.perform(get("/api/me/profile").cookie(member.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(false)).andExpect(jsonPath("$.version").value(0));
