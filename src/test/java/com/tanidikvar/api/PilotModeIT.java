@@ -35,12 +35,16 @@ class PilotModeIT {
  @Autowired JdbcTemplate jdbc;
  @Autowired PasswordEncoder passwords;
  @Autowired AuthenticationService auth;
- @Test void pilotAllowsPhotolessParticipationButRejectsBothUploadsWithoutPersistingFiles()throws Exception{
+ @Test void pilotAllowsPhotolessParticipationAndDocumentlessAdminApplicationsButRejectsAvatarUploads()throws Exception{
   UUID id=UUID.randomUUID();String email=id+"@example.test";
   jdbc.update("INSERT INTO users(id,email,password_hash,authority,email_verified_at,created_at,updated_at) VALUES (?,?,?,'MEMBER',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",id,email,passwords.encode("Pilot-test-password!"));
+  UUID university=UUID.randomUUID(),department=UUID.randomUUID(),education=UUID.randomUUID();
+  jdbc.update("INSERT INTO universities(id,name,normalized_name) VALUES (?,?,'pilot-university')",university,"Pilot Üniversitesi "+university);
+  jdbc.update("INSERT INTO departments(id,name,normalized_name) VALUES (?,?,'pilot-department')",department,"Pilot Bölümü "+department);
+  jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)",education,university,department);
   Cookie csrfCookie=mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk()).andReturn().getResponse().getCookie("XSRF-TOKEN");
   Cookie cookie=new Cookie("TV_ACCESS",auth.login(email,"Pilot-test-password!").accessToken());
-  mvc.perform(put("/api/me/profile").cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()).contentType("application/json").content("{\"firstName\":\"Pilot\",\"lastName\":\"Katılımcı\",\"educationStatus\":\"YKS_ADAYI\",\"version\":0}"))
+  mvc.perform(put("/api/me/profile").cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()).contentType("application/json").content("{\"firstName\":\"Pilot\",\"lastName\":\"Katılımcı\",\"educationStatus\":\"UNIVERSITE_OGRENCISI\",\"universityDepartmentId\":\""+education+"\",\"version\":0}"))
     .andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(true));
   mvc.perform(post("/api/questions").cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()).contentType("application/json").content("{\"requestId\":\""+UUID.randomUUID()+"\",\"content\":{\"title\":\"Pilot ortamında soru oluşturma\",\"scope\":\"GENERAL\",\"tagIds\":[]}}"))
     .andExpect(status().isCreated());
@@ -48,10 +52,10 @@ class PilotModeIT {
     .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PILOT_RESTRICTION"));
   mvc.perform(multipart("/api/me/admin-applications")
     .file(new MockMultipartFile("request","request.json","application/json",("{\"requestId\":\""+UUID.randomUUID()+"\",\"profileVersion\":1}").getBytes(java.nio.charset.StandardCharsets.UTF_8)))
-    .file(new MockMultipartFile("document","test.pdf","application/pdf",new byte[]{1})).cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()))
-    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PILOT_RESTRICTION"));
+    .cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()))
+    .andExpect(status().isCreated()).andExpect(jsonPath("$.documentFileId").doesNotExist());
   assertThat(jdbc.queryForObject("SELECT count(*) FROM stored_files WHERE owner_id=?",Long.class,id)).isZero();
-  assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_applications WHERE applicant_id=?",Long.class,id)).isZero();
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM admin_applications WHERE applicant_id=?",Long.class,id)).isEqualTo(1);
  }
  @Test void pilotUsesSecureCsrfCookiesAndHidesOpenApi()throws Exception{
   mvc.perform(get("/api/auth/csrf").secure(true)).andExpect(status().isOk()).andExpect(cookie().secure("XSRF-TOKEN",true));
