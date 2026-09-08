@@ -1,4 +1,4 @@
-# Production deployment
+# Ücretsiz pilot deployment (Aşama 2)
 
 This repository deploys the API to a Render Free web service. The React SPA is
 deployed from the neighbouring web repository to Vercel, and PostgreSQL is
@@ -13,7 +13,7 @@ or a Vercel environment variable.
 
 | Variable | Source / value |
 | --- | --- |
-| `DB_URL` | Neon pooled JDBC URL (`jdbc:postgresql://…?sslmode=require`) |
+| `DB_URL` | Neon direct (non-pooled) JDBC URL (`jdbc:postgresql://…?sslmode=require`) |
 | `DB_USERNAME` | Neon connection user |
 | `DB_PASSWORD` | Neon connection password |
 | `CORS_ALLOWED_ORIGIN` | Canonical Vercel production origin, without a trailing slash |
@@ -50,7 +50,7 @@ web repository's `vercel.json` API rewrite, then set
 
 The final rewrite order is:
 
-1. `/api/:path*` → `https://<render-api-host>/:path*`
+1. `/api/:path*` → `https://<render-api-host>/api/:path*`
 2. `/(.*)` → `/index.html`
 
 Do not cache `/api` responses at Vercel: they can contain user-specific data or
@@ -66,3 +66,11 @@ actions. This prevents metadata that points to files which Render can lose.
 Do not switch `PILOT_MODE` off until a private object-storage provider is
 selected and the current local-disk storage adapter is replaced. Neon persists
 only metadata, not file bytes.
+
+## Aşama 2 yayın kapısı
+
+Bu ortam ücretsiz pilot içindir; tam production değildir. Flyway uygulama başlangıcında aynı datasource’u kullandığından ilk pilot için Neon direct bağlantısı kullan. Pooled bağlantı gerekirse migration bağlantısı ayrıca tasarlanıp test edilmelidir. Backup/restore işlemleri direct bağlantı üzerinden yapılır. Render PORT ile Docker sağlık kontrolü aynı portu kullanır.
+
+`scripts/smoke-pilot.sh` Python 3 gerektirir. JSON health/list/CSRF sözleşmesini, cookie kapsamını ve HTTPS üzerinde Secure bayrağını kontrol eder; HTML fallback veya yönlendirmeyi başarılı saymaz. Gerçek e-posta teslimi, login/refresh/logout, proxy arkasındaki rate limit ve restore provası ayrıca tamamlanmalıdır.
+
+Kaynaklar: [Neon bağlantı havuzu](https://neon.com/docs/connect/connection-pooling), [Render Free sınırları](https://render.com/docs/free), [Resend alan adı doğrulama](https://resend.com/docs/dashboard/domains/introduction).

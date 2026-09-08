@@ -75,6 +75,19 @@ class ProfileCatalogIT {
     Map<String,Object> profile(String status,long version){
         var body=new HashMap<String,Object>();body.put("firstName","Ada");body.put("lastName","Yılmaz");body.put("educationStatus",status);body.put("version",version);return body;
     }
+    @Test void legacyTagEndpointRequiresManagerAndPersistsReason()throws Exception{
+        var manager=actor("MANAGER");String name="İnceleme "+UUID.randomUUID();
+        mvc.perform(write("POST","/api/tags",manager,Map.of("name",name))).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("REASON_REQUIRED"));
+        var result=mapper.readTree(mvc.perform(write("POST","/api/tags",manager,Map.of("name",name,"reason","Yeni konu sınıflandırması"))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(jdbc.queryForObject("SELECT reason FROM management_actions WHERE target_id=?",String.class,UUID.fromString(result.get("id").asText()))).isEqualTo("Yeni konu sınıflandırması");
+        mvc.perform(write("POST","/api/tags",actor("MEMBER"),Map.of("name",name,"reason","Yetkisiz deneme"))).andExpect(status().isForbidden());
+    }
+    @Test void bulkImportRejectsNullPairBeforeWritingCatalog()throws Exception{
+        var manager=actor("MANAGER");String name="Geçersiz içe aktarım "+UUID.randomUUID();
+        var body=Map.of("universities",List.of(name),"departments",List.of(),"matches",Collections.singletonList(null),"reason","Validation kontrolü");
+        mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM universities WHERE name=?",Integer.class,name)).isZero();
+    }
     @Test void candidateCompletionChangesCurrentRoleAndEnablesInteraction()throws Exception{
         var member=actor("MEMBER");
         mvc.perform(get("/api/me/profile").cookie(member.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(false)).andExpect(jsonPath("$.version").value(0));

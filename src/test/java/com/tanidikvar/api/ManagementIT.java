@@ -228,6 +228,23 @@ class ManagementIT {
   jdbc.update("UPDATE tags SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",tag);
   mvc.perform(write("PUT",endpoint,m,classification("GENERAL",null,List.of(tag),2))).andExpect(status().isBadRequest());
  }
+ @Test void managerEditsQuestionTextWithAuditValidationAndVersion()throws Exception{
+  var m=actor("MANAGER");var a=actor("MEMBER");UUID q=question(a);String path="/api/manager/questions/"+q+"/classification";
+  var original=jdbc.queryForMap("SELECT author_id,created_at,archived_at,deleted_at FROM questions WHERE id=?",q);
+  var request=classification("GENERAL",null,List.of(),0);request.put("title","Manager tarafından düzeltilen başlık");request.put("body","Güncellenmiş soru açıklaması.");
+  mvc.perform(write("PUT",path,a,request)).andExpect(status().isForbidden());
+  var invalid=new HashMap<>(request);invalid.put("title","          ");mvc.perform(write("PUT",path,m,invalid)).andExpect(status().isBadRequest());
+  invalid.put("title",request.get("title"));invalid.put("body","a".repeat(5001));mvc.perform(write("PUT",path,m,invalid)).andExpect(status().isBadRequest());
+  mvc.perform(write("PUT",path,m,request)).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
+  assertThat(jdbc.queryForObject("SELECT title FROM questions WHERE id=?",String.class,q)).isEqualTo(request.get("title"));
+  assertThat(jdbc.queryForObject("SELECT body FROM questions WHERE id=?",String.class,q)).isEqualTo(request.get("body"));
+  assertThat(jdbc.queryForObject("SELECT edited_at IS NOT NULL FROM questions WHERE id=?",Boolean.class,q)).isTrue();
+  assertThat(jdbc.queryForMap("SELECT author_id,created_at,archived_at,deleted_at FROM questions WHERE id=?",q)).isEqualTo(original);
+  assertThat(jdbc.queryForObject("SELECT action FROM management_actions WHERE target_id=?",String.class,q)).isEqualTo("EDIT_QUESTION");
+  mvc.perform(write("PUT",path,m,request)).andExpect(status().isConflict());
+  request.put("version",1);request.put("body","");mvc.perform(write("PUT",path,m,request)).andExpect(status().isOk());
+  assertThat(jdbc.queryForObject("SELECT body FROM questions WHERE id=?",String.class,q)).isNull();
+ }
  @Test void classificationRaceAndAuditFailureCannotPartiallyChangeQuestion()throws Exception{
   var m=actor("MANAGER");var a=actor("MEMBER");UUID q=question(a),u=catalog("universities");String path="/api/manager/questions/"+q+"/classification";var gate=new CountDownLatch(1);
   try(var pool=Executors.newFixedThreadPool(2)){
@@ -235,7 +252,8 @@ class ManagementIT {
    var second=pool.submit(()->{gate.await();return moderate(m,q,"QUESTION",true,0).andReturn().getResponse().getStatus();});gate.countDown();assertThat(List.of(first.get(10,TimeUnit.SECONDS),second.get(10,TimeUnit.SECONDS))).containsExactlyInAnyOrder(200,409);
   }
   UUID other=question(a);jdbc.execute("CREATE FUNCTION fail_classification_test() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.target_id='"+other+"'::uuid THEN RAISE EXCEPTION 'test failure'; END IF; RETURN NEW; END $$");jdbc.execute("CREATE TRIGGER fail_classification_test AFTER INSERT ON management_actions FOR EACH ROW EXECUTE FUNCTION fail_classification_test()");
-  try{mvc.perform(write("PUT","/api/manager/questions/"+other+"/classification",m,classification("UNIVERSITY",u,List.of(),0))).andExpect(status().isServiceUnavailable());assertThat(jdbc.queryForObject("SELECT scope FROM questions WHERE id=?",String.class,other)).isEqualTo("GENERAL");assertThat(jdbc.queryForObject("SELECT version FROM questions WHERE id=?",Long.class,other)).isZero();}finally{jdbc.execute("DROP TRIGGER fail_classification_test ON management_actions");jdbc.execute("DROP FUNCTION fail_classification_test()");}
+  var textRequest=classification("UNIVERSITY",u,List.of(),0);textRequest.put("title","Rollback ile korunacak başlık");var oldTitle=jdbc.queryForObject("SELECT title FROM questions WHERE id=?",String.class,other);
+  try{mvc.perform(write("PUT","/api/manager/questions/"+other+"/classification",m,textRequest)).andExpect(status().isServiceUnavailable());assertThat(jdbc.queryForObject("SELECT title FROM questions WHERE id=?",String.class,other)).isEqualTo(oldTitle);assertThat(jdbc.queryForObject("SELECT scope FROM questions WHERE id=?",String.class,other)).isEqualTo("GENERAL");assertThat(jdbc.queryForObject("SELECT version FROM questions WHERE id=?",Long.class,other)).isZero();}finally{jdbc.execute("DROP TRIGGER fail_classification_test ON management_actions");jdbc.execute("DROP FUNCTION fail_classification_test()");}
  }
  @Test void userDetailAndApplicationHistoryIncludeInactiveUsersAndStayManagerOnly()throws Exception{
   var m=actor("MANAGER");var a=actor("MEMBER");profile(a);UUID approved=application(a,m,true),pending=application(a,m,false),q=question(a);answer(a,q,null);answer(a,q,approved);

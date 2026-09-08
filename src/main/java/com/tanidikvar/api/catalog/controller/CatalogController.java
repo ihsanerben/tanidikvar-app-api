@@ -27,8 +27,8 @@ public class CatalogController {
             @RequestParam(defaultValue="") String q,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
         return catalog.educationList(id,q,false,page,size);
     }
-    @PostMapping("/tags") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasAnyRole('ADMIN','MANAGER')")
+    @PostMapping("/tags") @ResponseStatus(HttpStatus.CREATED) @PreAuthorize("hasRole('MANAGER')")
     public CatalogResponse tag(@AuthenticationPrincipal SessionPrincipal principal,@Valid @RequestBody CatalogCreateRequest request) {
-        return catalog.create(principal.userId(),CatalogKind.TAG,request.name());
+        return catalog.create(principal.userId(),CatalogKind.TAG,request.name(),request.reason());
     }
 }

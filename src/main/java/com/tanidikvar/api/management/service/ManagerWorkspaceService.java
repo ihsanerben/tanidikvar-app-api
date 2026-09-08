@@ -38,14 +38,20 @@ public class ManagerWorkspaceService {
  @Transactional
  public ClassificationResponse classify(UUID actor,UUID id,ClassificationRequest request){
   if(!repository.lockQuestion(id))throw missing();manager(actor);var old=repository.classification(id);version(old.version(),request.version());
+  var content=repository.content(id,"QUESTION").orElseThrow(this::missing);
+  String title=request.title()==null?content.title():request.title().replaceAll("(?U)\\s+"," ").strip();
+  if(title.length()<10||title.length()>200)throw new DomainException(400,"VALIDATION_FAILED","Soru başlığı 10–200 karakter olmalı.",Map.of("title","10–200 karakter"));
+  String body=request.body()==null?content.body():request.body().strip();
+  if(body!=null&&body.isEmpty())body=null;
+  boolean textChanged=!Objects.equals(content.title(),title)||!Objects.equals(content.body(),body);
   boolean valid=switch(request.scope()){case GENERAL->request.universityId()==null&&request.universityDepartmentId()==null;case UNIVERSITY->request.universityId()!=null&&request.universityDepartmentId()==null;case UNIVERSITY_DEPARTMENT->request.universityId()==null&&request.universityDepartmentId()!=null;};
   if(!valid||new HashSet<>(request.tagIds()).size()!=request.tagIds().size())throw new DomainException(400,"VALIDATION_FAILED","Kapsam ve tag seçimini kontrol et.");
   if(request.universityId()!=null)catalog.lockReference(CatalogKind.UNIVERSITY,request.universityId(),!request.universityId().equals(old.universityId()));
   if(request.universityDepartmentId()!=null)catalog.lockEducation(request.universityDepartmentId(),!request.universityDepartmentId().equals(old.universityDepartmentId()));
   for(UUID tag:request.tagIds().stream().sorted().toList())catalog.lockReference(CatalogKind.TAG,tag,!old.tagIds().contains(tag));
-  if(old.scope()!=request.scope()||!Objects.equals(old.universityId(),request.universityId())||!Objects.equals(old.universityDepartmentId(),request.universityDepartmentId())||!new HashSet<>(old.tagIds()).equals(new HashSet<>(request.tagIds()))){
-   repository.classify(id,new ManagementClassification(request.scope(),request.universityId(),request.universityDepartmentId(),request.tagIds(),old.version()));
-   repository.audit(actor,"CLASSIFY_QUESTION","QUESTION",id,request.reason().strip());
+  if(textChanged||old.scope()!=request.scope()||!Objects.equals(old.universityId(),request.universityId())||!Objects.equals(old.universityDepartmentId(),request.universityDepartmentId())||!new HashSet<>(old.tagIds()).equals(new HashSet<>(request.tagIds()))){
+   repository.classify(id,new ManagementClassification(request.scope(),request.universityId(),request.universityDepartmentId(),request.tagIds(),old.version()),title,body,textChanged);
+   repository.audit(actor,textChanged?"EDIT_QUESTION":"CLASSIFY_QUESTION","QUESTION",id,request.reason().strip());
   }
   return classification(repository.classification(id));
  }

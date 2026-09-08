@@ -13,5 +13,5 @@ COPY --from=build --chown=app:app /workspace/target/tanidikvar-api-0.0.1-SNAPSHO
 RUN mkdir -p /app/storage && chown app:app /app/storage
 USER app
 EXPOSE 8080
-HEALTHCHECK --interval=5s --timeout=3s --start-period=40s --retries=20 CMD wget -q -O /dev/null http://127.0.0.1:8080/api/health || exit 1
+HEALTHCHECK --interval=5s --timeout=3s --start-period=40s --retries=20 CMD wget -q -O /dev/null http://127.0.0.1:${PORT:-${SERVER_PORT:-8080}}/api/health || exit 1
 ENTRYPOINT ["java", "-jar", "app.jar"]

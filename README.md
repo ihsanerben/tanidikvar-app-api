@@ -253,7 +253,7 @@ Manager soru/cevap yayımlayamaz, beğeni/atama veya Admin başvurusu yapamaz; H
 - `GET /api/manager/users/{id}`: hesap, eğitim, doğrulama ve geçmiş dahil katkı sayıları.
 - `GET /api/manager/admin-applications/{id}` ve `GET /api/manager/users/{id}/applications?page=0&size=20`: başvuru detayı/geçmişi. Pasif hesabın bilgileri görünür, belge indirme kuralı değişmez.
 - `GET /api/manager/questions/{id}?page=0&size=20`: gizli soru ve her iki tür cevabı içeren çalışma detayı.
-- `PUT /api/manager/questions/{id}/classification`: `{scope,universityId,universityDepartmentId,tagIds,version,reason}`; yalnız kapsam/tagler değişir, yazar metni ve yayın/düzenleme zamanı korunur.
+- `PUT /api/manager/questions/{id}/classification`: `{scope,universityId,universityDepartmentId,tagIds,version,reason,title?,body?}`; Manager soru başlığı/açıklaması ve sınıflandırmasını tek transaction içinde düzenler. Eksik/null metin alanları korunur, boş body temizler. Metin değişikliği edited_at ve EDIT_QUESTION audit kaydı oluşturur; yazar, ilk yayın, arşiv/gizleme korunur.
 - `GET /api/manager/catalog-usage/{kind}/{id}`: bağlı profil/soru sayıları; kind UNIVERSITY/DEPARTMENT/UNIVERSITY_DEPARTMENT/TAG.
 - `GET /api/manager/actions/{id}`: işlem detayı ve aktör adı. Liste q/action/targetType ile filtrelenir.
 
