@@ -41,8 +41,9 @@ class ApplicationIT {
  MockHttpServletRequestBuilder write(String path,Actor a,Object body){return put(path).cookie(a.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body));}
  Actor student(){var a=actor("MEMBER");UUID u=UUID.randomUUID(),d=UUID.randomUUID(),e=UUID.randomUUID();
   jdbc.update("INSERT INTO universities(id,name,normalized_name) VALUES (?,?,?)",u,"Test Üniversitesi "+u,u.toString());
-  jdbc.update("INSERT INTO departments(id,name,normalized_name) VALUES (?,?,?)",d,"Bilgisayar "+d,d.toString());
+ jdbc.update("INSERT INTO departments(id,name,normalized_name) VALUES (?,?,?)",d,"Bilgisayar "+d,d.toString());
   jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)",e,u,d);
+  TestAvatar.ready(jdbc,a.id());
   jdbc.update("INSERT INTO user_profiles(user_id,first_name,last_name,education_status,university_department_id) VALUES (?, 'Ada','Yılmaz','UNIVERSITE_OGRENCISI',?)",a.id(),e);return a;
  }
  static byte[] pdf(){return "%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII);}
@@ -128,7 +129,7 @@ class ApplicationIT {
    var l=left.get(15,TimeUnit.SECONDS);var r=right.get(15,TimeUnit.SECONDS);assertThat(l.getStatus()).isEqualTo(201);assertThat(r.getStatus()).isEqualTo(201);
    assertThat(mapper.readTree(l.getContentAsString()).get("id")).isEqualTo(mapper.readTree(r.getContentAsString()).get("id"));
   }
-  assertThat(jdbc.queryForObject("SELECT count(*) FROM stored_files WHERE owner_id=? AND upload_status='READY'",Long.class,a.id())).isEqualTo(1);
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM stored_files WHERE owner_id=? AND purpose='VERIFICATION' AND upload_status='READY'",Long.class,a.id())).isEqualTo(1);
  }
  @Test void twoManagersCannotDecideSameVersion()throws Exception{
   var a=student();var m=actor("MANAGER");var n=actor("MANAGER");var app=submit(a);var gate=new CountDownLatch(1);

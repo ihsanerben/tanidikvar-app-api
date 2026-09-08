@@ -34,20 +34,24 @@ spring:
   mvc:
     log-resolved-exception: false
 server:
-  port: ${SERVER_PORT:8080}
+  port: ${PORT:${SERVER_PORT:8080}}
   error:
     include-message: never
     include-stacktrace: never
     include-binding-errors: never
 app:
+  pilot-mode: ${PILOT_MODE:false}
   storage-directory: ${STORAGE_DIRECTORY:.local/storage}
   auth:
     secret: ${JWT_SECRET}
     access-ttl: ${JWT_ACCESS_TTL:15m}
     refresh-ttl: ${JWT_REFRESH_TTL:14d}
   mail:
+    provider: ${MAIL_PROVIDER:smtp}
     frontend-url: ${FRONTEND_URL:http://localhost:5173}
     from: ${MAIL_FROM:noreply@tanidikvar.local}
+    resend-api-key: ${RESEND_API_KEY:}
+    resend-endpoint: ${RESEND_ENDPOINT:https://api.resend.com/emails}
   cors-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
   secure-cookies: ${COOKIE_SECURE:true}
 springdoc:

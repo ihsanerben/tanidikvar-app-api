@@ -48,6 +48,7 @@ class ProfileCatalogIT {
     Actor actor(String role){
         UUID id=UUID.randomUUID();String email=id+"@example.test";
         jdbc.update("INSERT INTO users(id,email,password_hash,authority,email_verified_at,created_at,updated_at) VALUES (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",id,email,passwords.encode("Testing-password!"),role);
+        TestAvatar.ready(jdbc,id);
         return new Actor(id,new Cookie("TV_ACCESS",auth.login(email,"Testing-password!").accessToken()));
     }
     MockHttpServletRequestBuilder write(String method,String path,Actor actor,Object body){
@@ -129,6 +130,7 @@ class ProfileCatalogIT {
         jdbc.update("UPDATE user_profiles SET deleted_at=CURRENT_TIMESTAMP,version=version+1 WHERE user_id=?",member.id());
         mvc.perform(get("/api/me").cookie(member.cookie())).andExpect(jsonPath("$.role").value("USER"));
         mvc.perform(get("/api/me/profile").cookie(member.cookie())).andExpect(jsonPath("$.completed").value(false)).andExpect(jsonPath("$.firstName").isEmpty()).andExpect(jsonPath("$.version").value(2));
+        jdbc.update("UPDATE stored_files SET deleted_at=clock_timestamp() WHERE owner_id=? AND purpose='AVATAR' AND upload_status='READY'",member.id());TestAvatar.ready(jdbc,member.id());
         mvc.perform(write("PUT","/api/me/profile",member,profile("YKS_ADAYI",2))).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_profiles WHERE user_id=?",Integer.class,member.id())).isEqualTo(1);
     }
