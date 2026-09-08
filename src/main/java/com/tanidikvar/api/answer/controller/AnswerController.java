@@ -15,16 +15,16 @@ public class AnswerController {
     private final AnswerService answers;
     public AnswerController(AnswerService answers) {this.answers=answers;}
     @GetMapping("/api/me/answers") @SecurityRequirement(name="accessCookie")
-    @Operation(summary="Kendi topluluk cevaplarını, kaldırılmış olanlar dahil, okunabilir sorularla listeler")
+    @Operation(summary="Kendi topluluk yorumlarını, kaldırılmış olanlar dahil, okunabilir sorularla listeler")
     public PageResponse<OwnAnswerResponse> history(@AuthenticationPrincipal SessionPrincipal principal,
-            @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
-        return answers.listMine(principal.userId(),page,size);
+            @RequestParam(required=false) com.tanidikvar.api.question.entity.QuestionScope scope,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+        return answers.listMine(principal.userId(),scope,page,size);
     }
     @GetMapping("/api/questions/{id}/answers")
-    @Operation(summary="Görünür topluluk cevaplarını ilk yayın sırasıyla listeler")
+    @Operation(summary="Görünür topluluk yorumlarını ilk yayın sırasıyla listeler")
     public PageResponse<AnswerResponse> list(@PathVariable UUID id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {return answers.list(id,page,size);}
     @GetMapping("/api/questions/{id}/my-answer") @SecurityRequirement(name="accessCookie")
-    @Operation(summary="Kendi topluluk cevabını kaldırılmış olsa da getirir; yoksa 204")
+    @Operation(summary="Kendi topluluk yorumunı kaldırılmış olsa da getirir; yoksa 204")
     public ResponseEntity<AnswerResponse> mine(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal principal) {
         return answers.mine(id,principal.userId()).map(ResponseEntity::ok).orElseGet(()->ResponseEntity.noContent().build());
     }
@@ -33,6 +33,6 @@ public class AnswerController {
     @PutMapping("/api/answers/{id}") @SecurityRequirement(name="accessCookie")
     public AnswerResponse update(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal principal,@Valid @RequestBody AnswerUpdateRequest request) {return answers.update(id,principal.userId(),request);}
     @PutMapping("/api/answers/{id}/status") @SecurityRequirement(name="accessCookie")
-    @Operation(summary="Sahibi cevabını soft delete eder veya aktif soruda aynı kaydı geri yükler")
+    @Operation(summary="Sahibi yorumunı soft delete eder veya aktif soruda aynı kaydı geri yükler")
     public AnswerResponse status(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal principal,@Valid @RequestBody AnswerStatusRequest request) {return answers.status(id,principal.userId(),request);}
 }

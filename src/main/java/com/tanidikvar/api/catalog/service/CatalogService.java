@@ -10,6 +10,7 @@ import com.tanidikvar.api.common.dto.PageResponse;
 import com.tanidikvar.api.common.error.DomainException;
 import com.tanidikvar.api.profile.service.InteractionPolicy;
 import java.util.UUID;
+import java.util.LinkedHashMap;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 
@@ -109,5 +110,34 @@ public class CatalogService {
             catalog.educationStatus(id,request.deleted()); catalog.audit(actor,request.deleted()?"SOFT_DELETE":"RESTORE","UNIVERSITY_DEPARTMENT",id,request.reason().strip());
         }
         return education(id);
+    }
+    @Transactional
+    public CatalogBulkImportResponse bulkImport(UUID actor,CatalogBulkImportRequest request) {
+        manager(actor); String reason=reason(request.reason());
+        var universities=new LinkedHashMap<String,CatalogResponse>();
+        var departments=new LinkedHashMap<String,CatalogResponse>();
+        int universityCreates=0,departmentCreates=0,matchCreates=0,skipped=0;
+        for(String raw:request.universities()) {
+            String name=CatalogNames.clean(raw),normalized=CatalogNames.normalized(name);
+            var existing=catalog.byNormalizedName(CatalogKind.UNIVERSITY,normalized);
+            if(existing.isPresent()) { universities.put(normalized,mapper.toResponse(existing.get())); skipped++; }
+            else { UUID id=UUID.randomUUID();catalog.create(CatalogKind.UNIVERSITY,id,name,normalized,actor);catalog.audit(actor,"BULK_CREATE","UNIVERSITY",id,reason);universities.put(normalized,mapper.toResponse(catalog.lock(CatalogKind.UNIVERSITY,id).orElseThrow(this::missing)));universityCreates++; }
+        }
+        for(String raw:request.departments()) {
+            String name=CatalogNames.clean(raw),normalized=CatalogNames.normalized(name);
+            var existing=catalog.byNormalizedName(CatalogKind.DEPARTMENT,normalized);
+            if(existing.isPresent()) { departments.put(normalized,mapper.toResponse(existing.get())); skipped++; }
+            else { UUID id=UUID.randomUUID();catalog.create(CatalogKind.DEPARTMENT,id,name,normalized,actor);catalog.audit(actor,"BULK_CREATE","DEPARTMENT",id,reason);departments.put(normalized,mapper.toResponse(catalog.lock(CatalogKind.DEPARTMENT,id).orElseThrow(this::missing)));departmentCreates++; }
+        }
+        for(var pair:request.matches()) {
+            String universityKey=CatalogNames.normalized(CatalogNames.clean(pair.university()));
+            String departmentKey=CatalogNames.normalized(CatalogNames.clean(pair.department()));
+            var university=universities.get(universityKey);if(university==null)university=catalog.byNormalizedName(CatalogKind.UNIVERSITY,universityKey).map(mapper::toResponse).orElseThrow(()->new DomainException(400,"UNKNOWN_UNIVERSITY","Eşleşmedeki üniversite katalogda veya toplu listede yok: "+pair.university()));
+            var department=departments.get(departmentKey);if(department==null)department=catalog.byNormalizedName(CatalogKind.DEPARTMENT,departmentKey).map(mapper::toResponse).orElseThrow(()->new DomainException(400,"UNKNOWN_DEPARTMENT","Eşleşmedeki bölüm katalogda veya toplu listede yok: "+pair.department()));
+            if(university.deletedAt()!=null||department.deletedAt()!=null)throw new DomainException(400,"INACTIVE_EDUCATION","Eşleşmeler yalnız aktif üniversite ve bölümlerle kurulabilir.");
+            if(catalog.education(university.id(),department.id()).isPresent()){skipped++;continue;}
+            UUID id=UUID.randomUUID();catalog.createEducation(id,university.id(),department.id());catalog.audit(actor,"BULK_CREATE","UNIVERSITY_DEPARTMENT",id,reason);matchCreates++;
+        }
+        return new CatalogBulkImportResponse(universityCreates,departmentCreates,matchCreates,skipped);
     }
 }

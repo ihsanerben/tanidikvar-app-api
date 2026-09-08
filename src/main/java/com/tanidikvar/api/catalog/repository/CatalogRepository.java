@@ -26,6 +26,9 @@ public class CatalogRepository {
     public Optional<CatalogEntry> lock(CatalogKind kind,UUID id) {
         return jdbc.query("SELECT id,name,deleted_at,version FROM "+kind.table()+" WHERE id=? FOR UPDATE",this::entry,id).stream().findFirst();
     }
+    public Optional<CatalogEntry> byNormalizedName(CatalogKind kind,String normalized) {
+        return jdbc.query("SELECT id,name,deleted_at,version FROM "+kind.table()+" WHERE normalized_name=? FOR UPDATE",this::entry,normalized).stream().findFirst();
+    }
     public void create(CatalogKind kind,UUID id,String name,String normalized,UUID actor) {
         if(kind==CatalogKind.TAG) jdbc.update("INSERT INTO tags(id,name,normalized_name,created_by) VALUES (?,?,?,?)",id,name,normalized,actor);
         else jdbc.update("INSERT INTO "+kind.table()+"(id,name,normalized_name) VALUES (?,?,?)",id,name,normalized);
@@ -52,6 +55,9 @@ public class CatalogRepository {
     }
     public void createEducation(UUID id,UUID university,UUID department) {
         jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)",id,university,department);
+    }
+    public Optional<EducationResponse> education(UUID university,UUID department) {
+        return jdbc.query(EDUCATION+"WHERE ud.university_id=? AND ud.department_id=? FOR UPDATE OF ud",this::mapEducation,university,department).stream().findFirst();
     }
     public void educationStatus(UUID id,boolean deleted) {
         jdbc.update("UPDATE university_departments SET deleted_at=CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=?",deleted,id);

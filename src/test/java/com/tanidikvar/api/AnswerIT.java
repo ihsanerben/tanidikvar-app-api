@@ -65,7 +65,7 @@ class AnswerIT {
     Map<String,Object> profile(String status,long version){
         var body=new HashMap<String,Object>();body.put("firstName","Ada");body.put("lastName","Yılmaz");body.put("educationStatus",status);body.put("version",version);return body;
     }
-    Actor member(String role)throws Exception {var a=actor(role);if(role.equals("MANAGER"))return a;mvc.perform(write("PUT","/api/me/profile",a,profile("YKS_ADAYI",0))).andExpect(status().isOk());return a;}
+    Actor member(String role)throws Exception {var a=actor(role);if(role.equals("MANAGER"))return a;TestAvatar.ready(jdbc,a.id());mvc.perform(write("PUT","/api/me/profile",a,profile("YKS_ADAYI",0))).andExpect(status().isOk());return a;}
     Map<String,Object> content(String title) {var c=new HashMap<String,Object>();c.put("title",title);c.put("scope","GENERAL");c.put("tagIds",List.of());return c;}
     JsonNode question(Actor a,Map<String,Object> c)throws Exception {return mapper.readTree(mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
     JsonNode answer(Actor a,String question,String body)throws Exception {return mapper.readTree(mvc.perform(write("POST","/api/questions/"+question+"/answers",a,Map.of("body",body))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
@@ -74,6 +74,7 @@ class AnswerIT {
     void communityAnswersUseCurrentAvatarAndHideRemovedIdentity() throws Exception {
         var owner=member("MEMBER");String q=question(owner);answer(owner,q,"Fotoğraflı deneyim paylaşımı.");
         UUID first=UUID.randomUUID(),second=UUID.randomUUID();
+        jdbc.update("UPDATE stored_files SET deleted_at=clock_timestamp() WHERE owner_id=? AND purpose='AVATAR' AND upload_status='READY'",owner.id());
         jdbc.update("INSERT INTO stored_files(id,owner_id,purpose,storage_key,original_name,content_type,byte_size,upload_status) VALUES (?,?,'AVATAR',?,'avatar.png','image/png',100,'READY')",first,owner.id(),first.toString());
         mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].avatarFileId").value(first.toString()));
         jdbc.update("UPDATE stored_files SET deleted_at=clock_timestamp() WHERE id=?",first);

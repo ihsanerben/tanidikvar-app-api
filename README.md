@@ -22,7 +22,7 @@ Durdurma (veri korunur):
 docker compose --profile app stop
 ```
 
-Loglar: `docker compose logs -f api web`. DB volume aynı `tanidikvar_postgres_data`; container storage `tanidikvar_api_storage` volume'ündedir. Local `.local/storage` ile ayrı dizinlerdir; henüz dosya yükleme verisi yoktur. Production HTTPS/SMTP/deployment ayarları bu yerel Compose akışından ayrıdır.
+Loglar: `docker compose logs -f api web`. DB volume aynı `tanidikvar_postgres_data`; container storage `tanidikvar_api_storage` volume'ündedir. Local `.local/storage` ile ayrı dizinlerdir; henüz dosya yükleme verisi yoktur. Production HTTPS/SMTP/deployment ayarları bu yerel Compose akışından ayrıdır. Render/Neon/Vercel kurulumu ve local Mailpit-production Resend ayrımı için [production deployment rehberine](docs/PRODUCTION_DEPLOYMENT.md) bak.
 
 ## Ayrı geliştirme süreçleri
 

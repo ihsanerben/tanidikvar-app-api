@@ -44,6 +44,9 @@ public class ManagerCatalogController {
     public EducationResponse createEducation(@AuthenticationPrincipal SessionPrincipal principal,@Valid @RequestBody EducationCreateRequest request) {
         return catalog.createEducation(principal.userId(),request);
     }
+    @PostMapping("/catalog/bulk-import") @ResponseStatus(HttpStatus.CREATED)
+    public CatalogBulkImportResponse bulkImport(@AuthenticationPrincipal SessionPrincipal principal,
+            @Valid @RequestBody CatalogBulkImportRequest request) { return catalog.bulkImport(principal.userId(),request); }
     @PutMapping("/university-departments/{id}/status") public EducationResponse educationStatus(@AuthenticationPrincipal SessionPrincipal principal,
             @PathVariable UUID id,@Valid @RequestBody CatalogStatusRequest request) { return catalog.educationStatus(principal.userId(),id,request); }
 }

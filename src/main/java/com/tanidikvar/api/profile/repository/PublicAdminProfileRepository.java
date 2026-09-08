@@ -25,10 +25,10 @@ public class PublicAdminProfileRepository {
  """+FROM;
  private PublicAdminProfile map(ResultSet r,int n)throws SQLException {return new PublicAdminProfile(r.getObject("id",UUID.class),r.getString("name"),r.getBoolean("active_admin"),r.getString("university_name"),r.getString("department_name"),r.getString("education_status"),(Integer)r.getObject("graduation_year"),r.getString("biography"),r.getString("occupation"),r.getString("company"),r.getString("linkedin_url"),r.getString("portfolio_url"),r.getObject("avatar_file_id",UUID.class),r.getLong("answer_count"),r.getLong("community_answer_count"));}
  public Optional<PublicAdminProfile> find(UUID id){return jdbc.query(SELECT+" WHERE u.id=? AND u.deleted_at IS NULL",this::map,id).stream().findFirst();}
- private static final String SEARCH=" WHERE u.deleted_at IS NULL AND strpos(search_fold(concat_ws(' ',p.first_name,p.last_name)),search_fold(?))>0";
+ private static final String SEARCH=" WHERE u.deleted_at IS NULL AND strpos(search_fold(concat_ws(' ',p.first_name,p.last_name)),search_fold(?))>0 AND (?::uuid IS NULL OR university.id=?) AND (?::uuid IS NULL OR department.id=?) AND (?='' OR p.education_status=?)";
  private static final String ACTIVE=" AND u.authority='ADMIN' AND u.active_verification_application_id=v.id";
- public List<PublicAdminProfile> search(String query,boolean activeOnly,int page,int size) {
-  return jdbc.query(SELECT+SEARCH+(activeOnly?ACTIVE:"")+" ORDER BY active_admin DESC,search_fold(concat_ws(' ',p.first_name,p.last_name)),u.id LIMIT ? OFFSET ?",this::map,query,size,page*size);
+ public List<PublicAdminProfile> search(String query,boolean activeOnly,UUID university,UUID department,String role,int page,int size) {
+  return jdbc.query(SELECT+SEARCH+(activeOnly?ACTIVE:"")+" ORDER BY active_admin DESC,search_fold(concat_ws(' ',p.first_name,p.last_name)),u.id LIMIT ? OFFSET ?",this::map,query,university,university,department,department,role,role,size,page*size);
  }
- public long count(String query,boolean activeOnly){return jdbc.queryForObject("SELECT count(*) "+FROM+SEARCH+(activeOnly?ACTIVE:""),Long.class,query);}
+ public long count(String query,boolean activeOnly,UUID university,UUID department,String role){return jdbc.queryForObject("SELECT count(*) "+FROM+SEARCH+(activeOnly?ACTIVE:""),Long.class,query,university,university,department,department,role,role);}
 }

@@ -34,13 +34,13 @@ public class AnswerRepository {
     public long countPublicByAuthor(UUID author) {
         return jdbc.queryForObject("SELECT count(*) "+FROM+" WHERE a.author_id=? AND a.answer_kind='COMMUNITY' AND a.deleted_at IS NULL AND a.moderated_at IS NULL",Long.class,author);
     }
-    public List<OwnAnswerEntry> listMine(UUID actor,int page,int size) {
+    public List<OwnAnswerEntry> listMine(UUID actor,String scope,int page,int size) {
         return jdbc.query("SELECT a.*,f.id avatar_file_id,p.education_status,q.title question_title,nullif(concat_ws(' ',p.first_name,p.last_name),'') author_name "+FROM+
-                " WHERE a.author_id=? AND a.answer_kind='COMMUNITY' ORDER BY a.published_at DESC,a.id DESC LIMIT ? OFFSET ?",
-                (r,n)->new OwnAnswerEntry(map(r,n),r.getString("question_title")),actor,size,page*size);
+                " WHERE a.author_id=? AND a.answer_kind='COMMUNITY' AND (?::varchar IS NULL OR q.scope=?) ORDER BY a.published_at DESC,a.id DESC LIMIT ? OFFSET ?",
+                (r,n)->new OwnAnswerEntry(map(r,n),r.getString("question_title")),actor,scope,scope,size,page*size);
     }
-    public long countMine(UUID actor) {
-        return jdbc.queryForObject("SELECT count(*) "+FROM+" WHERE a.author_id=? AND a.answer_kind='COMMUNITY'",Long.class,actor);
+    public long countMine(UUID actor,String scope) {
+        return jdbc.queryForObject("SELECT count(*) "+FROM+" WHERE a.author_id=? AND a.answer_kind='COMMUNITY' AND (?::varchar IS NULL OR q.scope=?)",Long.class,actor,scope,scope);
     }
     public void create(UUID id,UUID question,UUID actor,String body) {jdbc.update("INSERT INTO answers(id,question_id,author_id,body) VALUES (?,?,?,?)",id,question,actor,body);}
     public void update(UUID id,String body) {jdbc.update("UPDATE answers SET body=?,edited_at=clock_timestamp(),updated_at=clock_timestamp(),version=version+1 WHERE id=?",body,id);}

@@ -27,7 +27,7 @@ class ManagementIT {
  @Autowired JdbcTemplate jdbc;@Autowired MockMvc mvc;@Autowired ObjectMapper mapper;@Autowired PasswordEncoder passwords;@Autowired AuthenticationService auth;
  record Actor(UUID id,String email,Cookie cookie){}
  Actor actor(String role){UUID id=UUID.randomUUID();String email=id+"@example.test";jdbc.update("INSERT INTO users(id,email,password_hash,authority,email_verified_at,created_at,updated_at) VALUES (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",id,email,passwords.encode("Testing-password!"),role);return new Actor(id,email,new Cookie("TV_ACCESS",auth.login(email,"Testing-password!").accessToken()));}
- void profile(Actor a){jdbc.update("INSERT INTO user_profiles(user_id,first_name,last_name,education_status) VALUES (?,'Ada','Yılmaz','YKS_ADAYI')",a.id());}
+ void profile(Actor a){TestAvatar.ready(jdbc,a.id());jdbc.update("INSERT INTO user_profiles(user_id,first_name,last_name,education_status) VALUES (?,'Ada','Yılmaz','YKS_ADAYI')",a.id());}
  UUID question(Actor a){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO questions(id,author_id,request_id,title,scope) VALUES (?,?,?,?,'GENERAL')",id,a.id(),UUID.randomUUID(),"Yönetim sorusu "+id);return id;}
  UUID answer(Actor a,UUID q,UUID verification){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO answers(id,question_id,author_id,answer_kind,verification_application_id,body,published_at) VALUES (?,?,?,?,?,'Korunacak gerçek deneyim metni',clock_timestamp()-interval '1 second')",id,q,a.id(),verification==null?"COMMUNITY":"ADMIN",verification);return id;}
  UUID application(Actor a,Actor manager,boolean approved){UUID uni=UUID.randomUUID(),dep=UUID.randomUUID(),edu=UUID.randomUUID(),file=UUID.randomUUID(),v=UUID.randomUUID();jdbc.update("INSERT INTO universities(id,name,normalized_name) VALUES (?,?,?)",uni,"Test Üniversitesi",uni.toString());jdbc.update("INSERT INTO departments(id,name,normalized_name) VALUES (?,?,?)",dep,"Test Bölümü",dep.toString());jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)",edu,uni,dep);
@@ -55,6 +55,22 @@ class ManagementIT {
   mvc.perform(get("/api/manager/content").cookie(m.cookie()).param("kind","INVALID")).andExpect(status().isBadRequest());
   mvc.perform(get("/api/manager/users").cookie(m.cookie()).param("status","INVALID")).andExpect(status().isBadRequest());
   mvc.perform(get("/api/manager/users").cookie(m.cookie()).param("q","x".repeat(101))).andExpect(status().isBadRequest());
+ }
+ @Test void analyticsUsesIstanbulDaysFillsEmptyDatesAndValidatesTheRange()throws Exception{
+  var m=actor("MANAGER");var a=actor("MEMBER");UUID q=UUID.randomUUID(),answer=UUID.randomUUID(),like=UUID.randomUUID(),view=UUID.randomUUID();
+  jdbc.update("UPDATE users SET created_at='2026-09-01T21:30:00Z' WHERE id=?",a.id());
+  jdbc.update("INSERT INTO questions(id,author_id,request_id,title,scope,created_at) VALUES (?,?,?,?,'GENERAL','2026-09-02T08:00:00Z')",q,a.id(),UUID.randomUUID(),"Grafik testi için yeterli soru başlığı");
+  jdbc.update("INSERT INTO answers(id,question_id,author_id,answer_kind,body,published_at) VALUES (?,?,?,'COMMUNITY','Grafik testi için yeterli yorum metni','2026-09-02T09:00:00Z')",answer,q,a.id());
+  jdbc.update("INSERT INTO question_likes(question_id,user_id,first_liked_at) VALUES (?,?,'2026-09-02T10:00:00Z')",q,a.id());
+  jdbc.update("INSERT INTO question_views(opening_event_id,question_id,viewed_at) VALUES (?,?,'2026-09-02T11:00:00Z')",view,q);
+  mvc.perform(get("/api/manager/analytics").cookie(m.cookie()).param("dateFrom","2026-09-01").param("dateTo","2026-09-03"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.timezone").value("Europe/Istanbul")).andExpect(jsonPath("$.points.length()").value(3))
+   .andExpect(jsonPath("$.points[0].users").value(0)).andExpect(jsonPath("$.points[1].users").value(1)).andExpect(jsonPath("$.points[1].questions").value(1))
+   .andExpect(jsonPath("$.points[1].communityAnswers").value(1)).andExpect(jsonPath("$.points[1].views").value(1)).andExpect(jsonPath("$.points[1].likes").value(1))
+   .andExpect(jsonPath("$.points[2].questions").value(0)).andExpect(jsonPath("$.totals.users").value(1)).andExpect(jsonPath("$.totals.questions").value(1));
+  mvc.perform(get("/api/manager/analytics").cookie(a.cookie())).andExpect(status().isForbidden());
+  mvc.perform(get("/api/manager/analytics").cookie(m.cookie()).param("dateFrom","2026-09-04").param("dateTo","2026-09-03")).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_DATE_RANGE"));
+  mvc.perform(get("/api/manager/analytics").cookie(m.cookie()).param("dateFrom","2025-01-01").param("dateTo","2026-09-03")).andExpect(status().isBadRequest());
  }
  @Test void questionHideRestorePreservesArchiveAndContentAndAuditsOnlyChanges()throws Exception{
   var m=actor("MANAGER");var a=actor("MEMBER");UUID q=question(a),answer=answer(a,q,null);jdbc.update("UPDATE questions SET archived_at=CURRENT_TIMESTAMP WHERE id=?",q);String title=jdbc.queryForObject("SELECT title FROM questions WHERE id=?",String.class,q);

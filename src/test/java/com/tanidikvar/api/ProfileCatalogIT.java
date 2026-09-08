@@ -48,6 +48,7 @@ class ProfileCatalogIT {
     Actor actor(String role){
         UUID id=UUID.randomUUID();String email=id+"@example.test";
         jdbc.update("INSERT INTO users(id,email,password_hash,authority,email_verified_at,created_at,updated_at) VALUES (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",id,email,passwords.encode("Testing-password!"),role);
+        TestAvatar.ready(jdbc,id);
         return new Actor(id,new Cookie("TV_ACCESS",auth.login(email,"Testing-password!").accessToken()));
     }
     MockHttpServletRequestBuilder write(String method,String path,Actor actor,Object body){
@@ -61,6 +62,15 @@ class ProfileCatalogIT {
         var university=create(manager,"UNIVERSITY","Üniversite "+UUID.randomUUID());var department=create(manager,"DEPARTMENT","Bölüm "+UUID.randomUUID());
         return mapper.readTree(mvc.perform(write("POST","/api/manager/university-departments",manager,Map.of("universityId",university.get("id").asText(),"departmentId",department.get("id").asText())))
                 .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+    }
+    @Test void managerBulkImportIsAtomicAndSkipsExistingNames()throws Exception{
+        var manager=actor("MANAGER");String suffix=UUID.randomUUID().toString();String university="Toplu Üniversite "+suffix,department="Toplu Bölüm "+suffix;
+        var body=Map.of("universities",List.of(university),"departments",List.of(department),"matches",List.of(Map.of("university",university,"department",department)),"reason","AI listesinin kontrollü içe aktarımı");
+        mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,body)).andExpect(status().isCreated()).andExpect(jsonPath("$.universitiesCreated").value(1)).andExpect(jsonPath("$.departmentsCreated").value(1)).andExpect(jsonPath("$.matchesCreated").value(1));
+        mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,body)).andExpect(status().isCreated()).andExpect(jsonPath("$.skipped").value(3));
+        var invalid=Map.of("universities",List.of("Geri Alınacak "+suffix),"departments",List.of(),"matches",List.of(Map.of("university","Geri Alınacak "+suffix,"department","Olmayan Bölüm")),"reason","Atomiklik kontrolü");
+        mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,invalid)).andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM universities WHERE name=?",Integer.class,"Geri Alınacak "+suffix)).isZero();
     }
     Map<String,Object> profile(String status,long version){
         var body=new HashMap<String,Object>();body.put("firstName","Ada");body.put("lastName","Yılmaz");body.put("educationStatus",status);body.put("version",version);return body;
@@ -129,6 +139,7 @@ class ProfileCatalogIT {
         jdbc.update("UPDATE user_profiles SET deleted_at=CURRENT_TIMESTAMP,version=version+1 WHERE user_id=?",member.id());
         mvc.perform(get("/api/me").cookie(member.cookie())).andExpect(jsonPath("$.role").value("USER"));
         mvc.perform(get("/api/me/profile").cookie(member.cookie())).andExpect(jsonPath("$.completed").value(false)).andExpect(jsonPath("$.firstName").isEmpty()).andExpect(jsonPath("$.version").value(2));
+        jdbc.update("UPDATE stored_files SET deleted_at=clock_timestamp() WHERE owner_id=? AND purpose='AVATAR' AND upload_status='READY'",member.id());TestAvatar.ready(jdbc,member.id());
         mvc.perform(write("PUT","/api/me/profile",member,profile("YKS_ADAYI",2))).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM user_profiles WHERE user_id=?",Integer.class,member.id())).isEqualTo(1);
     }
@@ -181,12 +192,13 @@ class ProfileCatalogIT {
         jdbc.update("UPDATE users SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",a.id());mvc.perform(get("/api/profiles/"+a.id())).andExpect(status().isNotFound());
         mvc.perform(get("/api/profiles/"+actor("MANAGER").id())).andExpect(status().isNotFound());
     }
-    @Test void adminCannotCreateQuestionEvenThroughService()throws Exception{
+    @Test void adminCanCreateQuestionThroughHttpAndService()throws Exception{
         var admin=actor("ADMIN");mvc.perform(write("PUT","/api/me/profile",admin,profile("YKS_ADAYI",0))).andExpect(status().isOk());
         var content=new com.tanidikvar.api.question.dto.QuestionContent("Admin soru oluşturamaz",null,com.tanidikvar.api.question.entity.QuestionScope.GENERAL,null,null,List.of());
         var request=new com.tanidikvar.api.question.dto.QuestionCreateRequest(UUID.randomUUID(),content);
-        mvc.perform(write("POST","/api/questions",admin,request)).andExpect(status().isForbidden());
-        assertThatThrownBy(()->questionService.create(admin.id(),request)).isInstanceOf(com.tanidikvar.api.common.error.DomainException.class).hasMessageContaining("Adminler soru oluşturamaz");
+        mvc.perform(write("POST","/api/questions",admin,request)).andExpect(status().isCreated());
+        var second=new com.tanidikvar.api.question.dto.QuestionCreateRequest(UUID.randomUUID(),content);
+        org.assertj.core.api.Assertions.assertThat(questionService.create(admin.id(),second).authorId()).isEqualTo(admin.id());
     }
     @Autowired com.tanidikvar.api.question.service.QuestionService questionService;
 }

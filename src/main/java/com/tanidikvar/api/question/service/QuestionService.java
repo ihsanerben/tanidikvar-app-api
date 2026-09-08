@@ -36,10 +36,10 @@ public class QuestionService {
     public QuestionResponse get(UUID id) { return response(find(id,false)); }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public PageResponse<QuestionResponse> list(UUID actor,QuestionScope scope,UUID university,UUID education,UUID tag,int page,int size) {
-        return discover(actor,scope,university,education,tag,null,null,null,null,page,size);
+        return discover(actor,scope,university,education,tag,null,null,null,null,"NEWEST",page,size);
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
-    public PageResponse<QuestionResponse> discover(UUID actor,QuestionScope scope,UUID university,UUID education,UUID tag,UUID department,UUID admin,String query,PopularPeriod period,int page,int size) {
+    public PageResponse<QuestionResponse> discover(UUID actor,QuestionScope scope,UUID university,UUID education,UUID tag,UUID department,UUID admin,String query,PopularPeriod period,String sort,int page,int size) {
         SearchQuery.page(page,size);String search=SearchQuery.clean(query);
         var filters=new HashMap<String,Object>();
         if(actor!=null)filters.put("actor",actor);if(scope!=null)filters.put("scope",scope.name());
@@ -49,7 +49,8 @@ public class QuestionService {
             var until=clock.instant();filters.put("until",Timestamp.from(until));filters.put("since",Timestamp.from(until.minusSeconds(period.seconds())));
             filters.put("seconds",period.seconds());filters.put("viewWeight",1);filters.put("likeWeight",5);filters.put("communityWeight",10);filters.put("adminWeight",25);
         }
-        var rows=period==null?questions.list(filters,page,size):questions.popular(filters,page,size);
+        String ordering=sort==null?"NEWEST":sort.toUpperCase(Locale.ROOT);if(period==null&&!Set.of("NEWEST","OLDEST","MOST_VIEWED","MOST_LIKED","MOST_COMMENTED").contains(ordering))throw new DomainException(400,"INVALID_SORT","Sıralama seçeneğini kontrol et.");
+        var rows=period==null?questions.list(filters,ordering,page,size):questions.popular(filters,page,size);
         var ids=rows.stream().map(Question::id).toList();var tags=questions.tags(ids);var summaries=statistics.summaries(ids);
         return new PageResponse<>(rows.stream().map(q->mapper.toResponse(q,tags.getOrDefault(q.id(),List.of()),summaries.get(q.id()))).toList(),page,size,
             period==null?questions.count(filters):questions.popularCount(filters));
@@ -87,7 +88,6 @@ public class QuestionService {
     @Transactional
     public QuestionResponse create(UUID actor,QuestionCreateRequest request) {
         actor(actor);
-        if(accounts.lockActive(actor).getAuthority()==com.tanidikvar.api.auth.entity.Authority.ADMIN)throw new DomainException(403,"ADMIN_QUESTION_FORBIDDEN","Adminler soru oluşturamaz; sorulara cevap verebilir.");
         var existing=questions.existing(actor,request.requestId());
         var content=clean(request.content());
         if(existing.isPresent()) {

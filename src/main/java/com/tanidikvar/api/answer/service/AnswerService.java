@@ -22,22 +22,22 @@ public class AnswerService {
     public AnswerService(AnswerRepository answers,AnswerMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,QuestionAccessService questions) {
         this.answers=answers;this.mapper=mapper;this.accounts=accounts;this.interaction=interaction;this.questions=questions;
     }
- private void unmoderated(Answer a){if(a.moderatedAt()!=null)throw new DomainException(409,"ANSWER_MODERATED","Bu cevap Manager tarafından gizlendi. Düzenlenemez veya geri yüklenemez.");}
-    private Answer find(UUID id) { return answers.find(id).orElseThrow(()->new DomainException(404,"NOT_FOUND","Cevap bulunamadı.")); }
-    private void active(QuestionState q) {if(q.archivedAt()!=null)throw new DomainException(409,"QUESTION_ARCHIVED","Arşivlenmiş soru yeni cevap veya düzenlemeye kapalıdır.");}
+ private void unmoderated(Answer a){if(a.moderatedAt()!=null)throw new DomainException(409,"ANSWER_MODERATED","Bu yorum Manager tarafından gizlendi. Düzenlenemez veya geri yüklenemez.");}
+    private Answer find(UUID id) { return answers.find(id).orElseThrow(()->new DomainException(404,"NOT_FOUND","Yorum bulunamadı.")); }
+    private void active(QuestionState q) {if(q.archivedAt()!=null)throw new DomainException(409,"QUESTION_ARCHIVED","Arşivlenmiş soru yeni yorum veya düzenlemeye kapalıdır.");}
     private void actor(UUID actor) {accounts.lockActive(actor);interaction.requireCompleted(actor);}
-    private void owner(Answer a,UUID actor) {if(!a.authorId().equals(actor))throw new DomainException(403,"ACCESS_DENIED","Yalnız kendi cevabını yönetebilirsin.");}
-    private void version(Answer a,long version) {if(a.version()!=version)throw new DomainException(409,"STALE_VERSION","Cevap değişmiş. Güncel cevabı yükle.");}
+    private void owner(Answer a,UUID actor) {if(!a.authorId().equals(actor))throw new DomainException(403,"ACCESS_DENIED","Yalnız kendi yorumunı yönetebilirsin.");}
+    private void version(Answer a,long version) {if(a.version()!=version)throw new DomainException(409,"STALE_VERSION","Yorum değişmiş. Güncel yorumu yükle.");}
     private String body(String value) {
         String clean=value.replaceAll("(?U)^\\s+|\\s+$","");
-        if(clean.length()<10||clean.length()>5000)throw new DomainException(400,"VALIDATION_FAILED","Cevabını kontrol et.",Map.of("body","10–5000 karakter"));
+        if(clean.length()<10||clean.length()>5000)throw new DomainException(400,"VALIDATION_FAILED","Yorumunı kontrol et.",Map.of("body","10–5000 karakter"));
         return clean;
     }
     @Transactional(readOnly=true)
-    public PageResponse<OwnAnswerResponse> listMine(UUID actor,int page,int size) {
+    public PageResponse<OwnAnswerResponse> listMine(UUID actor,com.tanidikvar.api.question.entity.QuestionScope scope,int page,int size) {
         if(page<0||page>10000||size<1||size>100)throw new DomainException(400,"INVALID_REQUEST","Sayfa sınırlarını kontrol et.");
-        return new PageResponse<>(answers.listMine(actor,page,size).stream()
-                .map(entry->new OwnAnswerResponse(mapper.toResponse(entry.answer()),entry.questionTitle())).toList(),page,size,answers.countMine(actor));
+        return new PageResponse<>(answers.listMine(actor,scope==null?null:scope.name(),page,size).stream()
+                .map(entry->new OwnAnswerResponse(mapper.toResponse(entry.answer()),entry.questionTitle())).toList(),page,size,answers.countMine(actor,scope==null?null:scope.name()));
     }
     @Transactional(readOnly=true)
     public PageResponse<AnswerResponse> list(UUID question,int page,int size) {
@@ -60,8 +60,8 @@ public class AnswerService {
         var existing=answers.own(question,actor);
         if(existing.isPresent()) {
             var a=existing.get();unmoderated(a);
-            if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Kaldırdığın cevabı geri yükleyebilirsin.");
-            if(!a.body().equals(text))throw new DomainException(409,"ANSWER_EXISTS","Bu soruya zaten cevap verdin. Mevcut cevabını düzenle.");
+            if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Kaldırdığın yorumu geri yükleyebilirsin.");
+            if(!a.body().equals(text))throw new DomainException(409,"ANSWER_EXISTS","Bu soruya zaten yorum verdin. Mevcut yorumunı düzenle.");
             return mapper.toResponse(a);
         }
         active(q);UUID id=UUID.randomUUID();answers.create(id,question,actor,text);return mapper.toResponse(find(id));
@@ -69,7 +69,7 @@ public class AnswerService {
     @Transactional
     public AnswerResponse update(UUID id,UUID actor,AnswerUpdateRequest request) {
         var before=find(id);var q=questions.lock(before.questionId());actor(actor);var a=find(id);owner(a,actor);version(a,request.version());active(q);unmoderated(a);
-        if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Önce cevabını geri yükle.");
+        if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Önce yorumunı geri yükle.");
         String text=body(request.body());if(!text.equals(a.body()))answers.update(id,text);return mapper.toResponse(find(id));
     }
     @Transactional

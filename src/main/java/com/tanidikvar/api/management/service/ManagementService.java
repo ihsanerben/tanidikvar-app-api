@@ -25,11 +25,21 @@ public class ManagementService {
  private void version(long actual,long requested){if(actual!=requested)throw new DomainException(409,"STALE_VERSION","Kayıt değişmiş. Güncel listeyi yükle.");}
  private String reason(ManagementStatusRequest request){if(request.hidden()==null||request.reason()==null||request.reason().isBlank()||request.reason().strip().length()>1000||request.version()<0)throw new DomainException(400,"REASON_REQUIRED","Gerekçe yaz (en fazla 1000 karakter).");return request.reason().strip();}
  @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
- public PageResponse<ManagedUserResponse> users(UUID actor,String q,String status,String authority,int page,int size){reader(actor);SearchQuery.page(page,size);String query=SearchQuery.clean(q);status(status);if(!Set.of("","MEMBER","ADMIN","MANAGER").contains(authority))throw new DomainException(400,"INVALID_REQUEST","Yetki filtresini kontrol et.");return new PageResponse<>(repository.users(query,status,authority,page,size).stream().map(mapper::user).toList(),page,size,repository.userCount(query,status,authority));}
+ public PageResponse<ManagedUserResponse> users(UUID actor,String q,String status,String authority,String educationStatus,int page,int size){reader(actor);SearchQuery.page(page,size);String query=SearchQuery.clean(q);status(status);if(!Set.of("","MEMBER","ADMIN","MANAGER").contains(authority))throw new DomainException(400,"INVALID_REQUEST","Yetki filtresini kontrol et.");if(!Set.of("","YKS_ADAYI","UNIVERSITE_OGRENCISI","MEZUN").contains(educationStatus))throw new DomainException(400,"INVALID_REQUEST","Rol filtresini kontrol et.");return new PageResponse<>(repository.users(query,status,authority,educationStatus,page,size).stream().map(mapper::user).toList(),page,size,repository.userCount(query,status,authority,educationStatus));}
  @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
- public PageResponse<ManagedContentResponse> contents(UUID actor,String kind,String q,String status,int page,int size){reader(actor);SearchQuery.page(page,size);kind(kind);status(status);String query=SearchQuery.clean(q);return new PageResponse<>(repository.contents(kind,query,status,page,size).stream().map(mapper::content).toList(),page,size,repository.contentCount(kind,query,status));}
+ public PageResponse<ManagedContentResponse> contents(UUID actor,String kind,String q,String status,UUID authorId,int page,int size){reader(actor);SearchQuery.page(page,size);kind(kind);status(status);String query=SearchQuery.clean(q);return new PageResponse<>(repository.contents(kind,query,status,authorId,page,size).stream().map(mapper::content).toList(),page,size,repository.contentCount(kind,query,status,authorId));}
  @Transactional(readOnly=true)
  public ManagementStatsResponse stats(UUID actor){reader(actor);return mapper.stats(repository.stats());}
+ @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+ public ManagementAnalyticsResponse analytics(UUID actor,java.time.LocalDate dateFrom,java.time.LocalDate dateTo){
+  reader(actor);var zone=java.time.ZoneId.of("Europe/Istanbul");var today=java.time.LocalDate.now(clock.withZone(zone));
+  var to=dateTo==null?today:dateTo;var from=dateFrom==null?to.minusDays(29):dateFrom;
+  if(from.isAfter(to)||java.time.temporal.ChronoUnit.DAYS.between(from,to)>365)throw new DomainException(400,"INVALID_DATE_RANGE","Tarih aralığı en fazla 366 gün olabilir ve başlangıç bitişten sonra olamaz.");
+  var points=repository.analytics(from,to,zone).stream().map(mapper::analyticsPoint).toList();
+  long users=0,questions=0,community=0,admin=0,views=0,likes=0,applications=0,approved=0,rejected=0;
+  for(var p:points){users+=p.users();questions+=p.questions();community+=p.communityAnswers();admin+=p.adminAnswers();views+=p.views();likes+=p.likes();applications+=p.applications();approved+=p.approvedApplications();rejected+=p.rejectedApplications();}
+  return new ManagementAnalyticsResponse(from,to,zone.getId(),new ManagementAnalyticsTotalsResponse(users,questions,community,admin,views,likes,applications,approved,rejected),points);
+ }
  @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
  public PageResponse<ManagementActionResponse> actions(UUID actor,int page,int size){reader(actor);SearchQuery.page(page,size);return new PageResponse<>(repository.actions(page,size).stream().map(mapper::action).toList(),page,size,repository.actionCount());}
  @Transactional
