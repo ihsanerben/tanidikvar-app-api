@@ -18,7 +18,7 @@ public class ApplicationController {
  @GetMapping("/api/me/admin-applications")
  public PageResponse<ApplicationResponse> mine(@AuthenticationPrincipal SessionPrincipal p,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return applications.mine(p.userId(),page,size);}
  @PostMapping(value="/api/me/admin-applications",consumes=MediaType.MULTIPART_FORM_DATA_VALUE) @ResponseStatus(HttpStatus.CREATED)
- public ApplicationResponse submit(@AuthenticationPrincipal SessionPrincipal p,@Valid @RequestPart("request") ApplicationSubmission request,@RequestPart("document") MultipartFile document){return uploads.submit(p.userId(),request,document);}
+ public ApplicationResponse submit(@AuthenticationPrincipal SessionPrincipal p,@Valid @RequestPart("request") ApplicationSubmission request,@RequestPart(value="document",required=false) MultipartFile document){return uploads.submit(p.userId(),request,document);}
  @GetMapping("/api/manager/admin-applications") @PreAuthorize("hasRole('MANAGER')")
  public PageResponse<ApplicationResponse> list(@AuthenticationPrincipal SessionPrincipal p,@RequestParam(required=false) String status,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return applications.manage(p.userId(),status,page,size);}
  @PutMapping("/api/manager/admin-applications/{id}/decision") @PreAuthorize("hasRole('MANAGER')")
@@ -30,4 +30,3 @@ public class ApplicationController {
  @GetMapping("/api/manager/users/{id}/applications") @PreAuthorize("hasRole('MANAGER')")
  public PageResponse<ApplicationResponse> history(@AuthenticationPrincipal SessionPrincipal p,@PathVariable UUID id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return applications.history(p.userId(),id,page,size);}
 }
-

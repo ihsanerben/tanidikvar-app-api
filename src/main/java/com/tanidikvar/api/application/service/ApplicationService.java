@@ -24,7 +24,7 @@ public class ApplicationService {
   accounts.lockActive(owner);return duplicate(owner,request,hash);
  }
  private Optional<ApplicationResponse> duplicate(UUID owner,ApplicationSubmission request,String hash){
-  return applications.request(owner,request.requestId()).map(a->{if(a.profileVersion()!=request.profileVersion()||!a.documentSha256().equals(hash))throw new DomainException(409,"REQUEST_CONFLICT","Bu gönderim farklı bilgilerle kullanılmış.");return mapper.toResponse(a);});
+  return applications.request(owner,request.requestId()).map(a->{if(a.profileVersion()!=request.profileVersion()||!Objects.equals(a.documentSha256(),hash))throw new DomainException(409,"REQUEST_CONFLICT","Bu gönderim farklı bilgilerle kullanılmış.");return mapper.toResponse(a);});
  }
  @Transactional
  public ApplicationResponse submit(UUID owner,ApplicationSubmission request,UUID file,String hash){
@@ -35,7 +35,7 @@ public class ApplicationService {
   if(p.version()!=request.profileVersion())throw new DomainException(409,"STALE_VERSION","Profil değişmiş. Bilgilerini tekrar kontrol et.");
   if(applications.pending(owner))throw new DomainException(409,"APPLICATION_PENDING","Zaten bekleyen bir başvurun var.");
   catalog.lockEducation(p.education().id(),true);
-  UUID id=UUID.randomUUID();files.ready(file);applications.insert(id,owner,request.requestId(),p,file,hash);
+  UUID id=UUID.randomUUID();if(file!=null)files.ready(file);applications.insert(id,owner,request.requestId(),p,file,hash);
   return mapper.toResponse(find(id));
  }
  @Transactional(readOnly=true)
@@ -54,7 +54,7 @@ public class ApplicationService {
   if(account.getAuthority()==Authority.MANAGER)throw denied();
   if(a.version()!=request.version()||!a.status().equals("PENDING"))throw new DomainException(409,"STALE_VERSION","Başvuru kararı değişmiş. Listeyi yenile.");
   String reason=request.status().equals("REJECTED")?reason(request.reason()):null;
-  if(request.status().equals("APPROVED"))files.requireVerification(a.documentFileId(),a.applicantId());
+  if(request.status().equals("APPROVED")&&a.documentFileId()!=null)files.requireVerification(a.documentFileId(),a.applicantId());
   applications.decide(id,actor,request.status(),reason);
   if(request.status().equals("APPROVED"))account.grantAdmin(id,clock.instant());
   applications.audit(actor,request.status(),"ADMIN_APPLICATION",id,reason);

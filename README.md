@@ -135,7 +135,7 @@ Bütün cevap mutasyonları soru → kullanıcı sırasıyla kilitlenir. Questio
 ## Admin başvuruları ve özel dosyalar
 
 - `GET /api/me/admin-applications`: kendi başvuruların; en yeni önce, `page/size` (20 varsayılan, en fazla 100).
-- `POST /api/me/admin-applications`: tek multipart gönderimi; JSON `request` parçası `{requestId,profileVersion}`, PDF `document` parçası. Tamamlanmış öğrenci/mezun profili gerekir. Aynı gönderim anahtarı/profil sürümü/dosya hash’i aynı kaydı döndürür; yalnız bir bekleyen başvuru olabilir.
+- `POST /api/me/admin-applications`: tek multipart gönderimi; JSON `request` parçası `{requestId,profileVersion}`, isteğe bağlı PDF `document` parçası. Tamamlanmış öğrenci/mezun profili gerekir. Aynı gönderim anahtarı/profil sürümü/dosya hash'i aynı kaydı döndürür; yalnız bir bekleyen başvuru olabilir.
 - `GET /api/manager/admin-applications`: Manager listesi, isteğe bağlı `status=PENDING|APPROVED|REJECTED`, `page/size`.
 - `PUT /api/manager/admin-applications/{id}/decision`: `{status,reason,version}`. PENDING kabul/ret; ret gerekçesi zorunlu. Kabul ADMIN yetkisi ve aktif doğrulama bağlantısıyla atomiktir.
 - `POST /api/manager/users/{id}/revoke-admin`: `{verificationId,reason}`. Beklenen güncel doğrulamayı kontrol eder, yetkiyi kaldırır ve bekleyen başvuruları gerekçeli ret ile kapatır. Geçmiş onay değişmez. Sonuç 204.

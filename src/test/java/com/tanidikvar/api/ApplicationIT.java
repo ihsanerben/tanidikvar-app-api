@@ -48,6 +48,7 @@ class ApplicationIT {
  }
  static byte[] pdf(){return "%PDF-1.4\n1 0 obj << /Type /Catalog >> endobj\n%%EOF\n".getBytes(java.nio.charset.StandardCharsets.US_ASCII);}
  RequestBuilder upload(Actor a,UUID request,long version,byte[] bytes){return multipart("/api/me/admin-applications").file(new MockMultipartFile("document","belge.pdf","application/pdf",bytes)).file(new MockMultipartFile("request","","application/json",mapper.writeValueAsBytes(Map.of("requestId",request,"profileVersion",version)))).cookie(a.cookie()).with(csrf());}
+ RequestBuilder uploadWithoutDocument(Actor a,UUID request,long version){return multipart("/api/me/admin-applications").file(new MockMultipartFile("request","","application/json",mapper.writeValueAsBytes(Map.of("requestId",request,"profileVersion",version)))).cookie(a.cookie()).with(csrf());}
  JsonNode submit(Actor a)throws Exception{return mapper.readTree(mvc.perform(upload(a,UUID.randomUUID(),1,pdf())).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
  // Simulate a pending application created under the previous re-verification policy.
  JsonNode legacyPending(Actor a)throws Exception{
@@ -59,6 +60,13 @@ class ApplicationIT {
   var a=student();var m=actor("MANAGER");var approved=submit(a);approve(m,approved);
   mvc.perform(upload(a,UUID.randomUUID(),1,pdf())).andExpect(status().isForbidden());
   mvc.perform(get("/api/me/admin-applications").cookie(a.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+ }
+ @Test void documentIsOptionalAndManagerCanApproveDocumentlessApplication()throws Exception{
+  var a=student();var m=actor("MANAGER");UUID request=UUID.randomUUID();
+  var application=mapper.readTree(mvc.perform(uploadWithoutDocument(a,request,1)).andExpect(status().isCreated()).andExpect(jsonPath("$.documentFileId").doesNotExist()).andReturn().getResponse().getContentAsString());
+  approve(m,application);
+  assertThat(role(a)).isEqualTo("ADMIN");assertThat(active(a)).isEqualTo(application.get("id").asText());
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM stored_files WHERE owner_id=? AND purpose='VERIFICATION'",Long.class,a.id())).isZero();
  }
  String decision(JsonNode a){return "/api/manager/admin-applications/"+a.get("id").asText()+"/decision";}
  void approve(Actor m,JsonNode a)throws Exception{mvc.perform(write(decision(a),m,Map.of("status","APPROVED","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.activeVerification").value(true));}
