@@ -19,9 +19,9 @@ public class QuestionController {
     @Operation(summary="Aktif soruları Türkçe karakter toleranslı arama ve birleşik filtrelerle en yeniden eskiye listeler")
     public PageResponse<QuestionResponse> list(@RequestParam(required=false) QuestionScope scope,@RequestParam(required=false) UUID universityId,
             @RequestParam(required=false) UUID universityDepartmentId,@RequestParam(required=false) UUID tagId,
-            @RequestParam(required=false) UUID departmentId,@RequestParam(required=false) UUID adminId,@RequestParam(required=false) String q,
+            @RequestParam(required=false) UUID departmentId,@RequestParam(required=false) UUID adminId,@RequestParam(required=false) String q,@RequestParam(defaultValue="NEWEST") String sort,
             @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
-        return questions.discover(null,scope,universityId,universityDepartmentId,tagId,departmentId,adminId,q,null,page,size);
+        return questions.discover(null,scope,universityId,universityDepartmentId,tagId,departmentId,adminId,q,null,sort,page,size);
     }
     @GetMapping("/api/popular")
     @Operation(summary="Seçilen dönemdeki görünür etkileşimleri 1/5/10/25 ağırlık ve doğrusal zaman azaltmasıyla sıralar; kartlar tüm zamanlar sayaçlarını taşır")
@@ -30,7 +30,7 @@ public class QuestionController {
             @RequestParam(required=false) UUID universityDepartmentId,@RequestParam(required=false) UUID tagId,
             @RequestParam(required=false) UUID departmentId,@RequestParam(required=false) UUID adminId,@RequestParam(required=false) String q,
             @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
-        return questions.discover(null,scope,universityId,universityDepartmentId,tagId,departmentId,adminId,q,period,page,size);
+        return questions.discover(null,scope,universityId,universityDepartmentId,tagId,departmentId,adminId,q,period,"POPULAR",page,size);
     }
     @GetMapping("/api/me/questions") @SecurityRequirement(name="accessCookie")
     @Operation(summary="Kendi sorularını arşivdekiler dahil listeler")

@@ -45,7 +45,7 @@ public class SecurityConfiguration {
                                 "/api/auth/resend-verification", "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/universities", "/api/universities/*/departments", "/api/departments", "/api/tags").permitAll()
                         .requestMatchers("/api/manager/**").hasRole("MANAGER")
-                        .requestMatchers(HttpMethod.POST, "/api/questions").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN")
+                        .requestMatchers(HttpMethod.POST, "/api/questions").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "ADMIN")
                         .requestMatchers(HttpMethod.GET, "/api/profiles/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/questions/*/answers", "/api/questions/*/admin-answers", "/api/me/admin-applications").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/questions/*/like", "/api/questions/*/assignment", "/api/answers/*", "/api/answers/*/status", "/api/admin-answers/*", "/api/admin-answers/*/status", "/api/questions/*").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "ADMIN")

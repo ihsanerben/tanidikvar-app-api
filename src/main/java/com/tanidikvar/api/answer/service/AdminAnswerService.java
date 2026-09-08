@@ -26,20 +26,20 @@ public class AdminAnswerService {
  private boolean activeAdmin(Account a){return a.getAuthority()==Authority.ADMIN&&profiles.status(a.getId())!=null&&verifications.approved(a.getId(),a.getActiveVerificationApplicationId());}
  private UUID requireAdmin(Account a){if(a.getAuthority()!=Authority.ADMIN)throw denied();return verifications.requireApproved(a.getId(),a.getActiveVerificationApplicationId());}
  private Account actor(UUID id){var a=accounts.lockActive(id);interaction.requireCompleted(id);return a;}
- private void active(QuestionState q){if(q.archivedAt()!=null)throw new DomainException(409,"QUESTION_ARCHIVED","Arşivde yeni cevap, düzenleme veya geri yükleme yapılamaz.");}
+ private void active(QuestionState q){if(q.archivedAt()!=null)throw new DomainException(409,"QUESTION_ARCHIVED","Arşivde yeni yorum, düzenleme veya geri yükleme yapılamaz.");}
  private void version(long actual,long requested){if(actual!=requested)throw new DomainException(409,"STALE_VERSION","Kayıt değişmiş. Güncel bilgileri yükle.");}
- private void unmoderated(AdminAnswer a){if(a.moderatedAt()!=null)throw new DomainException(409,"ANSWER_MODERATED","Bu cevap Manager tarafından gizlendi. Düzenlenemez veya geri yüklenemez.");}
- private AdminAnswer find(UUID id){return answers.find(id).orElseThrow(()->new DomainException(404,"NOT_FOUND","Cevap bulunamadı."));}
- private void owner(AdminAnswer a,UUID id){if(!a.authorId().equals(id))throw new DomainException(403,"ACCESS_DENIED","Yalnız kendi cevabını yönetebilirsin.");}
- private String text(String body){String s=body.replaceAll("(?U)^\\s+|\\s+$","");if(s.length()<10||s.length()>5000)throw new DomainException(400,"VALIDATION_FAILED","Cevabını kontrol et.",Map.of("body","10–5000 karakter"));return s;}
- private void assigned(UUID q,UUID id){if(!answers.assignment(q,id).assigned())throw new DomainException(409,"ASSIGNMENT_REQUIRED","Önce bu soruya cevaplayacağım diyerek atan.");}
+ private void unmoderated(AdminAnswer a){if(a.moderatedAt()!=null)throw new DomainException(409,"ANSWER_MODERATED","Bu yorum Manager tarafından gizlendi. Düzenlenemez veya geri yüklenemez.");}
+ private AdminAnswer find(UUID id){return answers.find(id).orElseThrow(()->new DomainException(404,"NOT_FOUND","Yorum bulunamadı."));}
+ private void owner(AdminAnswer a,UUID id){if(!a.authorId().equals(id))throw new DomainException(403,"ACCESS_DENIED","Yalnız kendi yorumunı yönetebilirsin.");}
+ private String text(String body){String s=body.replaceAll("(?U)^\\s+|\\s+$","");if(s.length()<10||s.length()>5000)throw new DomainException(400,"VALIDATION_FAILED","Yorumunı kontrol et.",Map.of("body","10–5000 karakter"));return s;}
+ private void assigned(UUID q,UUID id){if(!answers.assignment(q,id).assigned())throw new DomainException(409,"ASSIGNMENT_REQUIRED","Önce bu soruya yorumlayacağım diyerek atan.");}
  @Transactional(readOnly=true)
  public PageResponse<AdminAnswerResponse> list(UUID q,int page,int size){questions.requireReadable(q);return listRows(q,null,false,page,size);}
  @Transactional(readOnly=true)
  public PageResponse<AdminAnswerResponse> history(UUID author,int page,int size){return listRows(null,author,false,page,size);}
  @Transactional(readOnly=true)
- public PageResponse<AdminAnswerResponse> mine(UUID author,int page,int size){return listRows(null,author,true,page,size);}
- private PageResponse<AdminAnswerResponse> listRows(UUID q,UUID author,boolean removed,int page,int size){page(page,size);return new PageResponse<>(answers.list(q,author,removed,page,size).stream().map(mapper::toResponse).toList(),page,size,answers.count(q,author,removed));}
+ public PageResponse<AdminAnswerResponse> mine(UUID author,com.tanidikvar.api.question.entity.QuestionScope scope,int page,int size){page(page,size);String s=scope==null?null:scope.name();return new PageResponse<>(answers.list(null,author,true,s,page,size).stream().map(mapper::toResponse).toList(),page,size,answers.count(null,author,true,s));}
+ private PageResponse<AdminAnswerResponse> listRows(UUID q,UUID author,boolean removed,int page,int size){page(page,size);return new PageResponse<>(answers.list(q,author,removed,null,page,size).stream().map(mapper::toResponse).toList(),page,size,answers.count(q,author,removed,null));}
  @Transactional(readOnly=true)
  public OwnAdminAnswerResponse own(UUID q,UUID actor){questions.requireReadable(q);return new OwnAdminAnswerResponse(answers.own(q,actor).map(mapper::toResponse).orElse(null),answers.assignment(q,actor));}
  @Transactional
@@ -54,12 +54,12 @@ public class AdminAnswerService {
  public AdminQuotaResponse quota(UUID actor){return quota(accounts.lockActive(actor),clock.instant());}
  @Transactional
  public AdminAnswerResponse create(UUID q,UUID id,AnswerCreateRequest request){var question=questions.lock(q);var account=actor(id);UUID verification=requireAdmin(account);String body=text(request.body());var old=answers.own(q,id);
-  if(old.isPresent()){var a=old.get();unmoderated(a);if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Cevabını geri yükleyebilirsin.");if(!a.body().equals(body))throw new DomainException(409,"ANSWER_EXISTS","Mevcut cevabını düzenle.");return mapper.toResponse(a);}
+  if(old.isPresent()){var a=old.get();unmoderated(a);if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Yorumunı geri yükleyebilirsin.");if(!a.body().equals(body))throw new DomainException(409,"ANSWER_EXISTS","Mevcut yorumunı düzenle.");return mapper.toResponse(a);}
   active(question);Instant now=clock.instant();if(quota(account,now).remaining()==0)throw new DomainException(409,"DAILY_LIMIT","Bugünkü beş farklı soru hakkını kullandın.");
   UUID answer=UUID.randomUUID();answers.create(answer,q,id,verification,body,now);return mapper.toResponse(find(answer));
  }
  @Transactional
- public AdminAnswerResponse update(UUID id,UUID actor,AnswerUpdateRequest request){var before=find(id);var q=questions.lock(before.questionId());var account=actor(actor);var a=find(id);owner(a,actor);version(a.version(),request.version());requireAdmin(account);active(q);unmoderated(a);if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Önce cevabını geri yükle.");String body=text(request.body());if(!body.equals(a.body()))answers.update(id,body);return mapper.toResponse(find(id));}
+ public AdminAnswerResponse update(UUID id,UUID actor,AnswerUpdateRequest request){var before=find(id);var q=questions.lock(before.questionId());var account=actor(actor);var a=find(id);owner(a,actor);version(a.version(),request.version());requireAdmin(account);active(q);unmoderated(a);if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Önce yorumunı geri yükle.");String body=text(request.body());if(!body.equals(a.body()))answers.update(id,body);return mapper.toResponse(find(id));}
  @Transactional
  public AdminAnswerResponse status(UUID id,UUID actor,AnswerStatusRequest request){var before=find(id);var q=questions.lock(before.questionId());var account=actor(actor);var a=find(id);owner(a,actor);version(a.version(),request.version());
   if(!request.deleted()){unmoderated(a);requireAdmin(account);active(q);}

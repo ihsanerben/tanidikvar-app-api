@@ -28,8 +28,7 @@ public class AdminAnswerController {
  @GetMapping("/api/me/admin-quota") @SecurityRequirement(name="accessCookie")
  public AdminQuotaResponse quota(@AuthenticationPrincipal SessionPrincipal p){return answers.quota(p.userId());}
  @GetMapping("/api/me/admin-answers") @SecurityRequirement(name="accessCookie")
- public PageResponse<AdminAnswerResponse> mine(@AuthenticationPrincipal SessionPrincipal p,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return answers.mine(p.userId(),page,size);}
+ public PageResponse<AdminAnswerResponse> mine(@AuthenticationPrincipal SessionPrincipal p,@RequestParam(required=false) com.tanidikvar.api.question.entity.QuestionScope scope,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return answers.mine(p.userId(),scope,page,size);}
  @GetMapping("/api/me/assignments") @SecurityRequirement(name="accessCookie")
  public PageResponse<AssignmentResponse> assignments(@AuthenticationPrincipal SessionPrincipal p,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return answers.assignments(p.userId(),page,size);}
 }
-

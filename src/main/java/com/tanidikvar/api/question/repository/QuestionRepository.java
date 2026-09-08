@@ -83,9 +83,10 @@ public class QuestionRepository {
             """;
         return sql;
     }
-    public List<Question> list(Map<String,Object> filters,int page,int size) {
+    public List<Question> list(Map<String,Object> filters,String sort,int page,int size) {
         var p=new HashMap<>(filters);p.put("limit",size);p.put("offset",page*size);
-        return jdbc.query(SELECT+where(filters)+" ORDER BY q.created_at DESC,q.id DESC LIMIT :limit OFFSET :offset",p,this::map);
+        String order=switch(sort){case "OLDEST"->"q.created_at ASC,q.id ASC";case "MOST_VIEWED"->"(SELECT count(*) FROM question_views v WHERE v.question_id=q.id AND v.deleted_at IS NULL) DESC,q.created_at DESC,q.id DESC";case "MOST_LIKED"->"(SELECT count(*) FROM question_likes l WHERE l.question_id=q.id AND l.deleted_at IS NULL) DESC,q.created_at DESC,q.id DESC";case "MOST_COMMENTED"->"(SELECT count(*) FROM answers a2 WHERE a2.question_id=q.id AND a2.deleted_at IS NULL AND a2.moderated_at IS NULL) DESC,q.created_at DESC,q.id DESC";default->"q.created_at DESC,q.id DESC";};
+        return jdbc.query(SELECT+where(filters)+" ORDER BY "+order+" LIMIT :limit OFFSET :offset",p,this::map);
     }
     public long count(Map<String,Object> filters) { return jdbc.queryForObject("SELECT count(*) "+FROM+where(filters),filters,Long.class); }
     private String popularCte(Map<String,Object> filters) {

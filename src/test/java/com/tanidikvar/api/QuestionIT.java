@@ -80,7 +80,7 @@ class QuestionIT {
             mvc.perform(write("PUT",path,other,Map.of("version",0,"content",c))).andExpect(status().isForbidden());
             mvc.perform(write("POST",path+"/archive",other,Map.of("version",0))).andExpect(status().isForbidden());
         }
-        mvc.perform(write("POST","/api/questions",admin,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isForbidden());
+        mvc.perform(write("POST","/api/questions",admin,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isCreated());
     }
     @Test void threeScopesFiltersAndDatabaseConstraints()throws Exception {
         var a=member("MEMBER");var manager=actor("MANAGER");var e=education(manager);var t=create(manager,"TAG","Soru Tag "+UUID.randomUUID());
