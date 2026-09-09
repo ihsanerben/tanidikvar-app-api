@@ -36,6 +36,7 @@ build/
 .env.*
 !.env.example
 .local/
+deploy/aws/data/
 
 .DS_Store
 *.log
