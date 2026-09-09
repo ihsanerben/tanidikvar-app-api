@@ -35,6 +35,7 @@ build/
 .env
 .env.*
 !.env.example
+!deploy/aws/.env.production.example
 .local/
 deploy/aws/data/
 
