@@ -10,7 +10,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.MockMvcPrint;
 import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -35,7 +34,7 @@ class PilotModeIT {
  @Autowired JdbcTemplate jdbc;
  @Autowired PasswordEncoder passwords;
  @Autowired AuthenticationService auth;
- @Test void pilotAllowsPhotolessParticipationAndDocumentlessAdminApplicationsButRejectsAvatarUploads()throws Exception{
+ @Test void pilotAllowsPhotolessParticipationAndDocumentlessAdminApplications()throws Exception{
   UUID id=UUID.randomUUID();String email=id+"@example.test";
   jdbc.update("INSERT INTO users(id,email,password_hash,authority,email_verified_at,created_at,updated_at) VALUES (?,?,?,'MEMBER',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",id,email,passwords.encode("Pilot-test-password!"));
   UUID university=UUID.randomUUID(),department=UUID.randomUUID(),education=UUID.randomUUID();
@@ -48,10 +47,9 @@ class PilotModeIT {
     .andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(true));
   mvc.perform(post("/api/questions").cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()).contentType("application/json").content("{\"requestId\":\""+UUID.randomUUID()+"\",\"content\":{\"title\":\"Pilot ortamında soru oluşturma\",\"scope\":\"GENERAL\",\"tagIds\":[]}}"))
     .andExpect(status().isCreated());
-  mvc.perform(multipart("/api/me/avatar").file(new MockMultipartFile("file","test.png","image/png",new byte[]{1})).cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()))
-    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("PILOT_RESTRICTION"));
-  mvc.perform(multipart("/api/me/admin-applications")
-    .file(new MockMultipartFile("request","request.json","application/json",("{\"requestId\":\""+UUID.randomUUID()+"\",\"profileVersion\":1}").getBytes(java.nio.charset.StandardCharsets.UTF_8)))
+  mvc.perform(post("/api/me/avatar").cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()))
+    .andExpect(status().isForbidden());
+  mvc.perform(post("/api/me/admin-applications").contentType("application/json").content("{\"requestId\":\""+UUID.randomUUID()+"\",\"profileVersion\":1}")
     .cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()))
     .andExpect(status().isCreated()).andExpect(jsonPath("$.documentFileId").doesNotExist());
   assertThat(jdbc.queryForObject("SELECT count(*) FROM stored_files WHERE owner_id=?",Long.class,id)).isZero();

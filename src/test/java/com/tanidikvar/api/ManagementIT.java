@@ -190,18 +190,13 @@ class ManagementIT {
   mvc.perform(post("/api/questions/"+q+"/views").with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("openingEventId",UUID.randomUUID())))).andExpect(status().isNoContent());
   assertThat(jdbc.queryForObject("SELECT count(*) FROM question_views WHERE question_id=?",Long.class,q)).isEqualTo(2);
  }
- @Test void managerIdentityAndAvatarDoNotRequireEducationAndRejectStaleUpdates()throws Exception{
+ @Test void managerIdentityDoesNotRequireEducationAndRejectsStaleUpdates()throws Exception{
   var m=actor("MANAGER");var member=actor("MEMBER");
   mvc.perform(get("/api/manager/account").cookie(member.cookie())).andExpect(status().isForbidden());
   mvc.perform(write("PUT","/api/manager/account",m,Map.of("firstName","Deniz","lastName","Yönetici","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
   mvc.perform(write("PUT","/api/manager/account",m,Map.of("firstName","Eski","lastName","Yönetici","version",0))).andExpect(status().isConflict());
   assertThat(jdbc.queryForObject("SELECT count(*) FROM user_profiles WHERE user_id=?",Long.class,m.id())).isZero();
-  byte[] bytes;try(var out=new java.io.ByteArrayOutputStream()){javax.imageio.ImageIO.write(new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB),"png",out);bytes=out.toByteArray();}
-  var file=new org.springframework.mock.web.MockMultipartFile("file","avatar.png","image/png",bytes);
-  var response=mapper.readTree(mvc.perform(multipart("/api/me/avatar").file(file).cookie(m.cookie()).with(csrf())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());
-  mvc.perform(get("/api/avatars/"+response.get("fileId").asText())).andExpect(status().isOk());
-  mvc.perform(write("POST","/api/me/avatar/remove",m,Map.of())).andExpect(status().isNoContent());
-  mvc.perform(get("/api/avatars/"+response.get("fileId").asText())).andExpect(status().isNotFound());
+  mvc.perform(write("POST","/api/me/avatar",m,Map.of())).andExpect(status().isForbidden());
   mvc.perform(get("/api/me").cookie(m.cookie())).andExpect(jsonPath("$.role").value("MANAGER")).andExpect(jsonPath("$.profileCompleted").value(false));
  }
  @Test void workspaceIncludesHiddenQuestionAndBothKindsWithoutPublicExposure()throws Exception{

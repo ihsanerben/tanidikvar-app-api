@@ -21,14 +21,6 @@ public class FileService {
  @Transactional(propagation=Propagation.MANDATORY)
  public void requireVerification(UUID id,UUID owner){var file=files.find(id).orElseThrow(this::missing);if(!file.purpose().equals("VERIFICATION")||!file.ownerId().equals(owner))throw missing();}
  @Transactional
- public AvatarResponse avatar(UUID owner,UUID file){accounts.lockActive(owner);files.removeAvatar(owner);files.ready(file);return new AvatarResponse(file);}
- @Transactional
- public void removeAvatar(UUID owner){accounts.lockActive(owner);files.removeAvatar(owner);}
- @Transactional(readOnly=true)
- public AvatarResponse avatarInfo(UUID owner){return new AvatarResponse(files.avatar(owner).orElse(null));}
- @Transactional(readOnly=true)
- public FileDownload avatarDownload(UUID id){var file=files.find(id).orElseThrow(this::missing);if(!file.purpose().equals("AVATAR")||!files.avatar(file.ownerId()).filter(id::equals).isPresent())throw missing();return new FileDownload(storage.read(file.storageKey()),file.contentType(),"avatar.png");}
- @Transactional
  public FileDownload document(UUID id,UUID actor){var account=accounts.lockActive(actor);var file=files.find(id).orElseThrow(this::missing);if(!file.purpose().equals("VERIFICATION")||(!actor.equals(file.ownerId())&&account.getAuthority()!=Authority.MANAGER))throw missing();return new FileDownload(storage.read(file.storageKey()),file.contentType(),"belge.pdf");}
  private DomainException missing(){return new DomainException(404,"NOT_FOUND","Dosya bulunamadı.");}
 }
