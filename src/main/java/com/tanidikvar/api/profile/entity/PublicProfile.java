@@ -1,3 +1,4 @@
 package com.tanidikvar.api.profile.entity;
+import java.time.Instant;
 import java.util.UUID;
-public record PublicProfile(UUID id,String name,String role,String educationStatus,String universityName,String departmentName,Integer graduationYear,String biography,String occupation,String company,String linkedinUrl,String portfolioUrl,UUID avatarFileId) {}
+public record PublicProfile(UUID id,String name,String role,String educationStatus,String universityName,String departmentName,Integer graduationYear,String biography,String occupation,String company,String linkedinUrl,String portfolioUrl,UUID avatarFileId,Instant createdAt) {}

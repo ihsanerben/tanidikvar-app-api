@@ -26,10 +26,10 @@ public class ApplicationService {
   var account=accounts.lockActive(owner);
   var old=duplicate(owner,request);if(old.isPresent())return old.get();
   var p=profiles.get(owner);
-  if(account.getAuthority()!=Authority.MEMBER||!p.completed()||p.educationStatus()==EducationStatus.YKS_ADAYI)throw new DomainException(403,"APPLICATION_INELIGIBLE","Yalnız Admin olmayan üniversite öğrencileri ve mezunlar başvurabilir.");
+  if(account.getAuthority()!=Authority.MEMBER||!p.completed())throw new DomainException(403,"APPLICATION_INELIGIBLE","Profilini tamamla; yalnız Admin olmayan kullanıcılar başvurabilir.");
   if(p.version()!=request.profileVersion())throw new DomainException(409,"STALE_VERSION","Profil değişmiş. Bilgilerini tekrar kontrol et.");
   if(applications.pending(owner))throw new DomainException(409,"APPLICATION_PENDING","Zaten bekleyen bir başvurun var.");
-  catalog.lockEducation(p.education().id(),true);
+  if(p.education()!=null)catalog.lockEducation(p.education().id(),true);
   UUID id=UUID.randomUUID();applications.insert(id,owner,request.requestId(),p,null,null);
   return mapper.toResponse(find(id));
  }

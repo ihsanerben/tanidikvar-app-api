@@ -39,6 +39,7 @@ class ApplicationIT {
   jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)",e,u,d);
   jdbc.update("INSERT INTO user_profiles(user_id,first_name,last_name,education_status,university_department_id) VALUES (?, 'Ada','Yılmaz','UNIVERSITE_OGRENCISI',?)",a.id(),e);return a;
  }
+ Actor candidate(){var a=actor("MEMBER");jdbc.update("INSERT INTO user_profiles(user_id,first_name,last_name,education_status) VALUES (?, 'Yiğit','Öztürk','YKS_ADAYI')",a.id());return a;}
  RequestBuilder submitRequest(Actor a,UUID request,long version)throws Exception{return post("/api/me/admin-applications").cookie(a.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("requestId",request,"profileVersion",version)));}
  JsonNode submit(Actor a)throws Exception{return mapper.readTree(mvc.perform(submitRequest(a,UUID.randomUUID(),1)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
  // Simulate a pending application created under the previous re-verification policy.
@@ -59,6 +60,11 @@ class ApplicationIT {
   assertThat(role(a)).isEqualTo("ADMIN");assertThat(active(a)).isEqualTo(application.get("id").asText());
   assertThat(jdbc.queryForObject("SELECT count(*) FROM stored_files WHERE owner_id=? AND purpose='VERIFICATION'",Long.class,a.id())).isZero();
  }
+ @Test void yksCandidateCanSubmitAndBeApprovedWithoutUniversitySnapshot()throws Exception{
+  var a=candidate();var m=actor("MANAGER");var application=submit(a);
+  assertThat(application.get("educationStatus").asString()).isEqualTo("YKS_ADAYI");assertThat(application.get("universityName").isNull()).isTrue();assertThat(application.get("departmentName").isNull()).isTrue();
+  approve(m,application);assertThat(role(a)).isEqualTo("ADMIN");assertThat(active(a)).isEqualTo(application.get("id").asText());
+ }
  String decision(JsonNode a){return "/api/manager/admin-applications/"+a.get("id").asText()+"/decision";}
  void approve(Actor m,JsonNode a)throws Exception{mvc.perform(write(decision(a),m,Map.of("status","APPROVED","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.activeVerification").value(true));}
  String role(Actor a){return jdbc.queryForObject("SELECT authority FROM users WHERE id=?",String.class,a.id());}
@@ -76,8 +82,8 @@ class ApplicationIT {
  @Test void eligibilityCsrfAndValidation()throws Exception{
   var a=student();var m=actor("MANAGER");
   mvc.perform(submitRequest(a,UUID.randomUUID(),2)).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STALE_VERSION"));
-  jdbc.update("UPDATE user_profiles SET education_status='YKS_ADAYI',university_department_id=NULL WHERE user_id=?",a.id());
-  mvc.perform(submitRequest(a,UUID.randomUUID(),1)).andExpect(status().isForbidden());
+  var incomplete=actor("MEMBER");
+  mvc.perform(submitRequest(incomplete,UUID.randomUUID(),1)).andExpect(status().isForbidden());
   mvc.perform(submitRequest(m,UUID.randomUUID(),1)).andExpect(status().isForbidden());
   mvc.perform(post("/api/me/admin-applications").cookie(a.cookie()).with(csrf()).contentType("application/json").content("{}")).andExpect(status().isBadRequest());
  }

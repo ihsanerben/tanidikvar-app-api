@@ -209,7 +209,7 @@ class ProfileCatalogIT {
     @Test void optionalLinksAreValidatedPublicAndNeverExposePrivateAccountFields()throws Exception{
         var a=actor("MEMBER");var body=profile("YKS_ADAYI",0);body.put("linkedinUrl","https://www.linkedin.com/in/ada");body.put("portfolioUrl","https://portfolio.example.test/work");
         mvc.perform(write("PUT","/api/me/profile",a,body)).andExpect(status().isOk()).andExpect(jsonPath("$.linkedinUrl").value(body.get("linkedinUrl")));
-        var response=mvc.perform(get("/api/profiles/"+a.id())).andExpect(status().isOk()).andExpect(jsonPath("$.portfolioUrl").value(body.get("portfolioUrl"))).andExpect(jsonPath("$.name").value("Ada Yılmaz")).andReturn().getResponse().getContentAsString();
+        var response=mvc.perform(get("/api/profiles/"+a.id())).andExpect(status().isOk()).andExpect(jsonPath("$.portfolioUrl").value(body.get("portfolioUrl"))).andExpect(jsonPath("$.name").value("Ada Yılmaz")).andExpect(jsonPath("$.createdAt").isNotEmpty()).andReturn().getResponse().getContentAsString();
         assertThat(response).doesNotContain("email","password","document","verification","version");
         for(String invalid:List.of("javascript:alert(1)","data:text/html,bad","//example.test","https://user:pass@example.test","https://example.test/\\evil")){
             body.put("version",1);body.put("portfolioUrl",invalid);mvc.perform(write("PUT","/api/me/profile",a,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.fieldErrors.portfolioUrl").exists());

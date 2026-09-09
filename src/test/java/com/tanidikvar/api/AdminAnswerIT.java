@@ -107,7 +107,7 @@ class AdminAnswerIT {
   verification(a,"MEZUN");
   jdbc.update("UPDATE user_profiles SET education_status='MEZUN',graduation_year=2025 WHERE user_id=?",a.id());
   mvc.perform(write("PUT",path(answer)+"/status",a,Map.of("deleted",false,"version",2))).andExpect(status().isOk()).andExpect(jsonPath("$.publishedAt").value(answer.get("publishedAt").asText())).andExpect(jsonPath("$.educationStatus").value("MEZUN"));
-  mvc.perform(get("/api/admins/"+a.id())).andExpect(jsonPath("$.educationStatus").value("MEZUN"));
+  mvc.perform(get("/api/admins/"+a.id())).andExpect(jsonPath("$.educationStatus").value("MEZUN")).andExpect(jsonPath("$.createdAt").isNotEmpty());
   assertThat(jdbc.queryForObject("SELECT verification_application_id FROM answers WHERE id=?",UUID.class,UUID.fromString(answer.get("id").asText()))).isEqualTo(old);
   mvc.perform(get("/api/me/admin-quota").cookie(a.cookie())).andExpect(jsonPath("$.used").value(1));
   mvc.perform(write("PUT",path(answer)+"/status",a,Map.of("deleted",true,"version",1))).andExpect(status().isConflict());

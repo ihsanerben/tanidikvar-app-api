@@ -19,11 +19,11 @@ public class PublicAdminProfileRepository {
  private static final String SELECT="""
  SELECT u.id,concat_ws(' ',p.first_name,p.last_name) name,
  (u.authority='ADMIN' AND u.active_verification_application_id=v.id) active_admin,
- university.name university_name,department.name department_name,p.education_status,p.graduation_year,p.biography,p.occupation,p.company,p.linkedin_url,p.portfolio_url,f.id avatar_file_id,
+ university.name university_name,department.name department_name,p.education_status,p.graduation_year,p.biography,p.occupation,p.company,p.linkedin_url,p.portfolio_url,f.id avatar_file_id,u.created_at,
  (SELECT count(*) FROM answers a JOIN questions q ON q.id=a.question_id AND q.deleted_at IS NULL WHERE a.author_id=u.id AND a.answer_kind='ADMIN' AND a.deleted_at IS NULL AND a.moderated_at IS NULL) answer_count,
  (SELECT count(*) FROM answers a JOIN questions q ON q.id=a.question_id AND q.deleted_at IS NULL WHERE a.author_id=u.id AND a.answer_kind='COMMUNITY' AND a.deleted_at IS NULL AND a.moderated_at IS NULL) community_answer_count
  """+FROM;
- private PublicAdminProfile map(ResultSet r,int n)throws SQLException {return new PublicAdminProfile(r.getObject("id",UUID.class),r.getString("name"),r.getBoolean("active_admin"),r.getString("university_name"),r.getString("department_name"),r.getString("education_status"),(Integer)r.getObject("graduation_year"),r.getString("biography"),r.getString("occupation"),r.getString("company"),r.getString("linkedin_url"),r.getString("portfolio_url"),r.getObject("avatar_file_id",UUID.class),r.getLong("answer_count"),r.getLong("community_answer_count"));}
+ private PublicAdminProfile map(ResultSet r,int n)throws SQLException {return new PublicAdminProfile(r.getObject("id",UUID.class),r.getString("name"),r.getBoolean("active_admin"),r.getString("university_name"),r.getString("department_name"),r.getString("education_status"),(Integer)r.getObject("graduation_year"),r.getString("biography"),r.getString("occupation"),r.getString("company"),r.getString("linkedin_url"),r.getString("portfolio_url"),r.getObject("avatar_file_id",UUID.class),r.getLong("answer_count"),r.getLong("community_answer_count"),r.getTimestamp("created_at").toInstant());}
  public Optional<PublicAdminProfile> find(UUID id){return jdbc.query(SELECT+" WHERE u.id=? AND u.deleted_at IS NULL",this::map,id).stream().findFirst();}
  private static final String SEARCH=" WHERE u.deleted_at IS NULL AND strpos(search_fold(concat_ws(' ',p.first_name,p.last_name)),search_fold(?))>0 AND (?::uuid IS NULL OR university.id=?) AND (?::uuid IS NULL OR department.id=?) AND (?='' OR p.education_status=?)";
  private static final String ACTIVE=" AND u.authority='ADMIN' AND u.active_verification_application_id=v.id";
