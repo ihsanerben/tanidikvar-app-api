@@ -17,8 +17,8 @@ HTTPS sertifikasını alır ve istekleri API container'ına iletir.
   kullanılacaksa 22 açılmaz ve instance rolüne `AmazonSSMManagedInstanceCore`
   eklenir.
 
-Render servisinin çalışır halde kalması geri dönüş içindir. AWS health ve web
-akışları doğrulanmadan Render silinmez veya durdurulmaz.
+API'nin güncel canlı ortamı AWS EC2'dir. Vercel `/api` isteklerini
+`https://api.tanidikvar.online` adresine yönlendirir.
 
 ## Sunucuda ilk kurulum
 
@@ -79,3 +79,31 @@ cd deploy/aws
 `deploy/aws/data` EBS üzerinde kalır fakat tek başına yedek değildir. İlk
 kalıcı kullanım öncesinde EBS snapshot planı ve Neon için ayrı restore denemesi
 oluşturulmalıdır.
+
+## GitHub Actions ile otomatik güncelleme
+
+`.github/workflows/deploy-aws.yml`, `main` dalına her push sonrasında önce tam
+Maven doğrulamasını çalıştırır. Testler başarılıysa GitHub OIDC ile AWS rolünü
+üstlenir ve Systems Manager Run Command üzerinden bu sunucuda aynı güvenli
+güncelleme akışını yürütür. Statik AWS access key veya production `.env` içeriği
+GitHub'a eklenmez.
+
+GitHub reposunda `Settings > Environments` altında `production` ortamını ve
+`Settings > Secrets and variables > Actions > Variables` altında şunları ekle:
+
+- `AWS_REGION`: instance'ın bölgesi; örneğin `eu-central-1`
+- `AWS_INSTANCE_ID`: EC2 instance kimliği; örneğin `i-0123456789abcdef0`
+- `AWS_DEPLOY_ROLE_ARN`: GitHub'ın üstleneceği IAM rolünün ARN'i
+
+EC2 instance profiline `AmazonSSMManagedInstanceCore` politikası bağlı olmalı ve
+instance Systems Manager `Fleet Manager > Managed nodes` ekranında çevrimiçi
+görünmelidir. GitHub OIDC rolünün trust policy'si yalnız
+`ihsanerben/tanidikvar-app-api` reposunun `main` dalına izin vermelidir. Rolün
+izin politikası yalnız hedef instance üzerinde `ssm:SendCommand` ve gönderilen
+komutun sonucunu okumak için gereken `ssm:GetCommandInvocation` yetkilerini
+içermelidir.
+
+Sunucudaki repo yolu `/home/ubuntu/tanidikvar-app-api` olmalıdır. Repo farklı
+bir yerdeyse workflow içindeki iki yol birlikte değiştirilir. İlk kurulumdan
+sonra GitHub'da `Actions > Test and deploy API to AWS > Run workflow` ile elle
+bir deneme yapılır; sonraki başarılı `main` push'ları otomatik deploy edilir.
