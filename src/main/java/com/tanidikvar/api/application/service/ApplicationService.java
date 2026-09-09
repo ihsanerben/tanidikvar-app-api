@@ -8,7 +8,6 @@ import com.tanidikvar.api.auth.service.AccountAccessService;
 import com.tanidikvar.api.catalog.service.CatalogService;
 import com.tanidikvar.api.profile.service.ProfileService;
 import com.tanidikvar.api.profile.entity.EducationStatus;
-import com.tanidikvar.api.file.service.FileService;
 import com.tanidikvar.api.common.error.DomainException;
 import com.tanidikvar.api.common.dto.PageResponse;
 import java.time.Clock;
@@ -17,25 +16,21 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ApplicationService {
- private final ApplicationRepository applications;private final ApplicationMapper mapper;private final AccountAccessService accounts;private final ProfileService profiles;private final CatalogService catalog;private final FileService files;private final Clock clock;
- public ApplicationService(ApplicationRepository applications,ApplicationMapper mapper,AccountAccessService accounts,ProfileService profiles,CatalogService catalog,FileService files,Clock clock){this.applications=applications;this.mapper=mapper;this.accounts=accounts;this.profiles=profiles;this.catalog=catalog;this.files=files;this.clock=clock;}
- @Transactional
- public Optional<ApplicationResponse> existing(UUID owner,ApplicationSubmission request,String hash){
-  accounts.lockActive(owner);return duplicate(owner,request,hash);
- }
- private Optional<ApplicationResponse> duplicate(UUID owner,ApplicationSubmission request,String hash){
-  return applications.request(owner,request.requestId()).map(a->{if(a.profileVersion()!=request.profileVersion()||!Objects.equals(a.documentSha256(),hash))throw new DomainException(409,"REQUEST_CONFLICT","Bu gönderim farklı bilgilerle kullanılmış.");return mapper.toResponse(a);});
+ private final ApplicationRepository applications;private final ApplicationMapper mapper;private final AccountAccessService accounts;private final ProfileService profiles;private final CatalogService catalog;private final Clock clock;
+ public ApplicationService(ApplicationRepository applications,ApplicationMapper mapper,AccountAccessService accounts,ProfileService profiles,CatalogService catalog,Clock clock){this.applications=applications;this.mapper=mapper;this.accounts=accounts;this.profiles=profiles;this.catalog=catalog;this.clock=clock;}
+ private Optional<ApplicationResponse> duplicate(UUID owner,ApplicationSubmission request){
+  return applications.request(owner,request.requestId()).map(a->{if(a.profileVersion()!=request.profileVersion())throw new DomainException(409,"REQUEST_CONFLICT","Bu gönderim farklı bilgilerle kullanılmış.");return mapper.toResponse(a);});
  }
  @Transactional
- public ApplicationResponse submit(UUID owner,ApplicationSubmission request,UUID file,String hash){
+ public ApplicationResponse submit(UUID owner,ApplicationSubmission request){
   var account=accounts.lockActive(owner);
-  var old=duplicate(owner,request,hash);if(old.isPresent())return old.get();
+  var old=duplicate(owner,request);if(old.isPresent())return old.get();
   var p=profiles.get(owner);
   if(account.getAuthority()!=Authority.MEMBER||!p.completed()||p.educationStatus()==EducationStatus.YKS_ADAYI)throw new DomainException(403,"APPLICATION_INELIGIBLE","Yalnız Admin olmayan üniversite öğrencileri ve mezunlar başvurabilir.");
   if(p.version()!=request.profileVersion())throw new DomainException(409,"STALE_VERSION","Profil değişmiş. Bilgilerini tekrar kontrol et.");
   if(applications.pending(owner))throw new DomainException(409,"APPLICATION_PENDING","Zaten bekleyen bir başvurun var.");
   catalog.lockEducation(p.education().id(),true);
-  UUID id=UUID.randomUUID();if(file!=null)files.ready(file);applications.insert(id,owner,request.requestId(),p,file,hash);
+  UUID id=UUID.randomUUID();applications.insert(id,owner,request.requestId(),p,null,null);
   return mapper.toResponse(find(id));
  }
  @Transactional(readOnly=true)
@@ -54,13 +49,12 @@ public class ApplicationService {
   if(account.getAuthority()==Authority.MANAGER)throw denied();
   if(a.version()!=request.version()||!a.status().equals("PENDING"))throw new DomainException(409,"STALE_VERSION","Başvuru kararı değişmiş. Listeyi yenile.");
   String reason=request.status().equals("REJECTED")?reason(request.reason()):null;
-  if(request.status().equals("APPROVED")&&a.documentFileId()!=null)files.requireVerification(a.documentFileId(),a.applicantId());
   applications.decide(id,actor,request.status(),reason);
   if(request.status().equals("APPROVED"))account.grantAdmin(id,clock.instant());
   applications.audit(actor,request.status(),"ADMIN_APPLICATION",id,reason);
   // JPA flush occurs at commit; derive this response's flag from the decision.
   var result=mapper.toResponse(find(id));
-  return new ApplicationResponse(result.id(),result.applicantId(),result.firstName(),result.lastName(),result.educationStatus(),result.universityName(),result.departmentName(),result.graduationYear(),result.occupation(),result.company(),result.documentFileId(),result.status(),result.submittedAt(),result.reviewedBy(),result.reviewedAt(),result.rejectionReason(),result.version(),request.status().equals("APPROVED"));
+  return new ApplicationResponse(result.id(),result.applicantId(),result.firstName(),result.lastName(),result.educationStatus(),result.universityName(),result.departmentName(),result.graduationYear(),result.occupation(),result.company(),result.status(),result.submittedAt(),result.reviewedBy(),result.reviewedAt(),result.rejectionReason(),result.version(),request.status().equals("APPROVED"));
  }
  @Transactional
  public void revoke(UUID actor,UUID owner,RevokeRequest request){
