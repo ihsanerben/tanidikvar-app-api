@@ -45,7 +45,7 @@ jobs:
           INSTANCE_ID: ${{ vars.AWS_INSTANCE_ID }}
         run: |
           set -euo pipefail
-          remote_command='set -eu; sudo -u ubuntu git -C /home/ubuntu/tanidikvar-app-api pull --ff-only origin main; cd /home/ubuntu/tanidikvar-app-api/deploy/aws; ./deploy.sh; curl -fsS https://api.tanidikvar.online/api/health'
+          remote_command='set -eu; sudo -u ubuntu git -C /home/ubuntu/tanidikvar-app-api pull --ff-only origin main; cd /home/ubuntu/tanidikvar-app-api/deploy/aws; ./deploy.sh; for attempt in $(seq 1 30); do if curl -fsS https://api.tanidikvar.online/api/health; then exit 0; fi; sleep 5; done; echo "API health check timed out" >&2; exit 1'
           parameters="$(jq -cn --arg command "$remote_command" '{commands:[$command]}')"
           command_id="$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
