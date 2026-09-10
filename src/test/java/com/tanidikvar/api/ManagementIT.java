@@ -250,6 +250,12 @@ class ManagementIT {
   var textRequest=classification("UNIVERSITY",u,List.of(),0);textRequest.put("title","Rollback ile korunacak başlık");var oldTitle=jdbc.queryForObject("SELECT title FROM questions WHERE id=?",String.class,other);
   try{mvc.perform(write("PUT","/api/manager/questions/"+other+"/classification",m,textRequest)).andExpect(status().isServiceUnavailable());assertThat(jdbc.queryForObject("SELECT title FROM questions WHERE id=?",String.class,other)).isEqualTo(oldTitle);assertThat(jdbc.queryForObject("SELECT scope FROM questions WHERE id=?",String.class,other)).isEqualTo("GENERAL");assertThat(jdbc.queryForObject("SELECT version FROM questions WHERE id=?",Long.class,other)).isZero();}finally{jdbc.execute("DROP TRIGGER fail_classification_test ON management_actions");jdbc.execute("DROP FUNCTION fail_classification_test()");}
  }
+ @Test void managerCanCreateAnIncompleteUsersProfileAndAssignEducationRole()throws Exception{
+  var m=actor("MANAGER");var a=actor("MEMBER");
+  var request=new LinkedHashMap<String,Object>();request.put("firstName","Bora Yiğit");request.put("lastName","Öztürk");request.put("educationStatus","YKS_ADAYI");request.put("biography","Manager tarafından tamamlandı.");
+  mvc.perform(write("PUT","/api/manager/users/"+a.id(),m,request)).andExpect(status().isOk()).andExpect(jsonPath("$.firstName").value("Bora Yiğit")).andExpect(jsonPath("$.user.educationStatus").value("YKS_ADAYI"));
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM user_profiles WHERE user_id=?",Integer.class,a.id())).isEqualTo(1);
+ }
  @Test void userDetailAndApplicationHistoryIncludeInactiveUsersAndStayManagerOnly()throws Exception{
   var m=actor("MANAGER");var a=actor("MEMBER");profile(a);UUID approved=application(a,m,true),pending=application(a,m,false),q=question(a);answer(a,q,null);answer(a,q,approved);
   mvc.perform(get("/api/manager/users/"+a.id()).cookie(m.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.questions").value(1)).andExpect(jsonPath("$.communityAnswers").value(1)).andExpect(jsonPath("$.adminAnswers").value(1)).andExpect(jsonPath("$.verificationId").value(approved.toString()));
