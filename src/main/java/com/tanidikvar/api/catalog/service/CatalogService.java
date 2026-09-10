@@ -38,6 +38,13 @@ public class CatalogService {
     }
     @Transactional(readOnly=true)
     public EducationResponse education(UUID id) { return catalog.education(id).orElseThrow(this::missing); }
+    @Transactional(readOnly=true)
+    public EducationResponse selection(UUID universityId,UUID departmentId) {
+        var university=catalog.find(CatalogKind.UNIVERSITY,universityId).orElseThrow(this::missing);
+        var department=catalog.find(CatalogKind.DEPARTMENT,departmentId).orElseThrow(this::missing);
+        boolean available=university.deletedAt()==null&&department.deletedAt()==null;
+        return new EducationResponse(department.id(),university.id(),university.name(),department.id(),department.name(),available?null:java.time.Instant.EPOCH,available,Math.max(university.version(),department.version()));
+    }
     @Transactional(propagation=Propagation.MANDATORY)
     public EducationResponse lockEducation(UUID id,boolean requireActive) {
         var relation=education(id);
@@ -116,7 +123,7 @@ public class CatalogService {
         manager(actor); String reason=reason(request.reason());
         var universities=new LinkedHashMap<String,CatalogResponse>();
         var departments=new LinkedHashMap<String,CatalogResponse>();
-        int universityCreates=0,departmentCreates=0,matchCreates=0,skipped=0;
+        int universityCreates=0,departmentCreates=0,skipped=0;
         for(String raw:request.universities()) {
             String name=CatalogNames.clean(raw),normalized=CatalogNames.normalized(name);
             var existing=catalog.byNormalizedName(CatalogKind.UNIVERSITY,normalized);
@@ -129,16 +136,7 @@ public class CatalogService {
             if(existing.isPresent()) { departments.put(normalized,mapper.toResponse(existing.get())); skipped++; }
             else { UUID id=UUID.randomUUID();catalog.create(CatalogKind.DEPARTMENT,id,name,normalized,actor);catalog.audit(actor,"BULK_CREATE","DEPARTMENT",id,reason);departments.put(normalized,mapper.toResponse(catalog.lock(CatalogKind.DEPARTMENT,id).orElseThrow(this::missing)));departmentCreates++; }
         }
-        for(var pair:request.matches()) {
-            String universityKey=CatalogNames.normalized(CatalogNames.clean(pair.university()));
-            String departmentKey=CatalogNames.normalized(CatalogNames.clean(pair.department()));
-            var university=universities.get(universityKey);if(university==null)university=catalog.byNormalizedName(CatalogKind.UNIVERSITY,universityKey).map(mapper::toResponse).orElseThrow(()->new DomainException(400,"UNKNOWN_UNIVERSITY","Eşleşmedeki üniversite katalogda veya toplu listede yok: "+pair.university()));
-            var department=departments.get(departmentKey);if(department==null)department=catalog.byNormalizedName(CatalogKind.DEPARTMENT,departmentKey).map(mapper::toResponse).orElseThrow(()->new DomainException(400,"UNKNOWN_DEPARTMENT","Eşleşmedeki bölüm katalogda veya toplu listede yok: "+pair.department()));
-            if(university.deletedAt()!=null||department.deletedAt()!=null)throw new DomainException(400,"INACTIVE_EDUCATION","Eşleşmeler yalnız aktif üniversite ve bölümlerle kurulabilir.");
-            if(catalog.education(university.id(),department.id()).isPresent()){skipped++;continue;}
-            UUID id=UUID.randomUUID();catalog.createEducation(id,university.id(),department.id());catalog.audit(actor,"BULK_CREATE","UNIVERSITY_DEPARTMENT",id,reason);matchCreates++;
-        }
-        return new CatalogBulkImportResponse(universityCreates,departmentCreates,matchCreates,skipped);
+        return new CatalogBulkImportResponse(universityCreates,departmentCreates,skipped);
     }
     @Transactional
     public TagBulkImportResponse bulkImportTags(UUID actor,TagBulkImportRequest request) {

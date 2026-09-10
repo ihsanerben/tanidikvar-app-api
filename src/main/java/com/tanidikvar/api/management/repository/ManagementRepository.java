@@ -10,7 +10,7 @@ public class ManagementRepository {
  private final JdbcTemplate jdbc;
  public ManagementRepository(JdbcTemplate jdbc){this.jdbc=jdbc;}
  private static Instant time(ResultSet r,String key)throws SQLException{var t=r.getTimestamp(key);return t==null?null:t.toInstant();}
- private static final String USERS="FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL LEFT JOIN manager_profiles m ON m.user_id=u.id AND m.deleted_at IS NULL LEFT JOIN university_departments ud ON ud.id=p.university_department_id LEFT JOIN universities un ON un.id=ud.university_id LEFT JOIN departments d ON d.id=ud.department_id ";
+ private static final String USERS="FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL LEFT JOIN manager_profiles m ON m.user_id=u.id AND m.deleted_at IS NULL LEFT JOIN universities un ON un.id=p.university_id LEFT JOIN departments d ON d.id=p.department_id ";
  private static final String USER_SELECT="SELECT u.*,coalesce(nullif(concat_ws(' ',m.first_name,m.last_name),''),nullif(concat_ws(' ',p.first_name,p.last_name),'')) name,p.education_status,un.name university_name,d.name department_name "+USERS;
  private ManagedUser mapUser(ResultSet r,int n)throws SQLException{return new ManagedUser(r.getObject("id",UUID.class),r.getString("email"),r.getString("name"),r.getString("authority"),r.getString("education_status"),r.getString("university_name"),r.getString("department_name"),r.getTimestamp("email_verified_at")!=null,time(r,"created_at"),time(r,"deleted_at"),r.getLong("version"));}
  public Optional<ManagedUser> user(UUID id){return jdbc.query(USER_SELECT+"WHERE u.id=?",this::mapUser,id).stream().findFirst();}
@@ -94,22 +94,20 @@ public class ManagementRepository {
  (SELECT count(*) FROM answers WHERE author_id=u.id AND answer_kind='ADMIN') admin_answers
  FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL
  LEFT JOIN stored_files f ON f.owner_id=u.id AND f.purpose='AVATAR' AND f.upload_status='READY' AND f.deleted_at IS NULL
- LEFT JOIN university_departments ud ON ud.id=p.university_department_id
- LEFT JOIN universities un ON un.id=ud.university_id LEFT JOIN departments d ON d.id=ud.department_id WHERE u.id=?
+ LEFT JOIN universities un ON un.id=p.university_id LEFT JOIN departments d ON d.id=p.department_id WHERE u.id=?
  """,(r,n)->new ManagementUserDetail(user,r.getString("university_name"),r.getString("department_name"),(Integer)r.getObject("graduation_year"),r.getObject("avatar_file_id",UUID.class),r.getString("biography"),r.getString("occupation"),r.getString("company"),r.getString("linkedin_url"),r.getString("portfolio_url"),r.getObject("active_verification_application_id",UUID.class),r.getLong("questions"),r.getLong("community_answers"),r.getLong("admin_answers")),id));}
- public ManagementClassification classification(UUID id){var tags=jdbc.query("SELECT tag_id FROM question_tags WHERE question_id=? AND deleted_at IS NULL ORDER BY tag_id",(r,n)->r.getObject(1,UUID.class),id);return jdbc.queryForObject("SELECT scope,university_id,university_department_id,version FROM questions WHERE id=?",(r,n)->new ManagementClassification(com.tanidikvar.api.question.entity.QuestionScope.valueOf(r.getString("scope")),r.getObject("university_id",UUID.class),r.getObject("university_department_id",UUID.class),tags,r.getLong("version")),id);}
- public void classify(UUID id,ManagementClassification c,String title,String body,boolean textChanged){jdbc.update("UPDATE questions SET title=?,body=?,scope=?,university_id=?,university_department_id=?,edited_at=CASE WHEN ? THEN clock_timestamp() ELSE edited_at END,updated_at=clock_timestamp(),version=version+1 WHERE id=?",title,body,c.scope().name(),c.universityId(),c.universityDepartmentId(),textChanged,id);
+ public ManagementClassification classification(UUID id){var tags=jdbc.query("SELECT tag_id FROM question_tags WHERE question_id=? AND deleted_at IS NULL ORDER BY tag_id",(r,n)->r.getObject(1,UUID.class),id);return jdbc.queryForObject("SELECT scope,university_id,department_id,version FROM questions WHERE id=?",(r,n)->new ManagementClassification(com.tanidikvar.api.question.entity.QuestionScope.valueOf(r.getString("scope")),r.getObject("university_id",UUID.class),r.getObject("department_id",UUID.class),tags,r.getLong("version")),id);}
+ public void classify(UUID id,ManagementClassification c,String title,String body,boolean textChanged){jdbc.update("UPDATE questions SET title=?,body=?,scope=?,university_id=?,department_id=?,university_department_id=NULL,edited_at=CASE WHEN ? THEN clock_timestamp() ELSE edited_at END,updated_at=clock_timestamp(),version=version+1 WHERE id=?",title,body,c.scope().name(),c.universityId(),c.departmentId(),textChanged,id);
  jdbc.update("UPDATE question_tags SET deleted_at=clock_timestamp(),updated_at=clock_timestamp(),version=version+1 WHERE question_id=? AND deleted_at IS NULL AND NOT (tag_id=ANY(?))",id,c.tagIds().toArray(UUID[]::new));
  for(UUID tag:c.tagIds())jdbc.update("INSERT INTO question_tags(question_id,tag_id) VALUES (?,?) ON CONFLICT(question_id,tag_id) DO UPDATE SET deleted_at=NULL,updated_at=clock_timestamp(),version=question_tags.version+1 WHERE question_tags.deleted_at IS NOT NULL",id,tag);
  }
  public List<ManagedContent> questionAnswers(UUID id,int page,int size){return jdbc.query(CONTENT_SELECT+"WHERE c.question_id=? AND c.kind<>'QUESTION' ORDER BY c.created_at,c.id LIMIT ? OFFSET ?",this::content,id,size,page*size);}
  public long questionAnswerCount(UUID id){return jdbc.queryForObject("SELECT count(*) FROM answers WHERE question_id=?",Long.class,id);}
  public CatalogUsage usage(String kind,UUID id){
- String relation=switch(kind){case "UNIVERSITY"->"ud.university_id=?";case "DEPARTMENT"->"ud.department_id=?";case "UNIVERSITY_DEPARTMENT"->"ud.id=?";case "TAG"->null;default->throw new IllegalArgumentException("Unsupported kind");};
+ String relation=switch(kind){case "UNIVERSITY"->"university_id=?";case "DEPARTMENT"->"department_id=?";case "TAG"->null;default->throw new IllegalArgumentException("Unsupported kind");};
  if(relation==null)return new CatalogUsage(0,jdbc.queryForObject("SELECT count(DISTINCT question_id) FROM question_tags WHERE tag_id=? AND deleted_at IS NULL",Long.class,id));
- long profiles=jdbc.queryForObject("SELECT count(*) FROM user_profiles p JOIN university_departments ud ON ud.id=p.university_department_id WHERE "+relation,Long.class,id);
- String question="SELECT count(*) FROM questions q LEFT JOIN university_departments ud ON ud.id=q.university_department_id WHERE "+relation;
- long questions=kind.equals("UNIVERSITY")?jdbc.queryForObject(question+" OR q.university_id=?",Long.class,id,id):jdbc.queryForObject(question,Long.class,id);
+ long profiles=jdbc.queryForObject("SELECT count(*) FROM user_profiles WHERE "+relation,Long.class,id);
+ long questions=jdbc.queryForObject("SELECT count(*) FROM questions WHERE "+relation,Long.class,id);
  return new CatalogUsage(profiles,questions);
  }
  private static final String ACTION_FROM="FROM management_actions a JOIN users u ON u.id=a.actor_id LEFT JOIN manager_profiles m ON m.user_id=u.id LEFT JOIN user_profiles p ON p.user_id=u.id ";

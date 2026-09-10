@@ -60,15 +60,14 @@ class ProfileCatalogIT {
     }
     JsonNode education(Actor manager)throws Exception{
         var university=create(manager,"UNIVERSITY","Üniversite "+UUID.randomUUID());var department=create(manager,"DEPARTMENT","Bölüm "+UUID.randomUUID());
-        return mapper.readTree(mvc.perform(write("POST","/api/manager/university-departments",manager,Map.of("universityId",university.get("id").asText(),"departmentId",department.get("id").asText())))
-                .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        var selection=mapper.createObjectNode();selection.set("universityId",university.get("id"));selection.set("departmentId",department.get("id"));return selection;
     }
     @Test void managerBulkImportIsAtomicAndSkipsExistingNames()throws Exception{
         var manager=actor("MANAGER");String suffix=UUID.randomUUID().toString();String university="Toplu Üniversite "+suffix,department="Toplu Bölüm "+suffix;
-        var body=Map.of("universities",List.of(university),"departments",List.of(department),"matches",List.of(Map.of("university",university,"department",department)),"reason","AI listesinin kontrollü içe aktarımı");
-        mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,body)).andExpect(status().isCreated()).andExpect(jsonPath("$.universitiesCreated").value(1)).andExpect(jsonPath("$.departmentsCreated").value(1)).andExpect(jsonPath("$.matchesCreated").value(1));
-        mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,body)).andExpect(status().isCreated()).andExpect(jsonPath("$.skipped").value(3));
-        var invalid=Map.of("universities",List.of("Geri Alınacak "+suffix),"departments",List.of(),"matches",List.of(Map.of("university","Geri Alınacak "+suffix,"department","Olmayan Bölüm")),"reason","Atomiklik kontrolü");
+        var body=Map.of("universities",List.of(university),"departments",List.of(department),"reason","AI listesinin kontrollü içe aktarımı");
+        mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,body)).andExpect(status().isCreated()).andExpect(jsonPath("$.universitiesCreated").value(1)).andExpect(jsonPath("$.departmentsCreated").value(1));
+        mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,body)).andExpect(status().isCreated()).andExpect(jsonPath("$.skipped").value(2));
+        var invalid=Map.of("universities",List.of("Geri Alınacak "+suffix),"departments",List.of(" "),"reason","Atomiklik kontrolü");
         mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,invalid)).andExpect(status().isBadRequest());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM universities WHERE name=?",Integer.class,"Geri Alınacak "+suffix)).isZero();
     }
@@ -82,9 +81,9 @@ class ProfileCatalogIT {
         assertThat(jdbc.queryForObject("SELECT reason FROM management_actions WHERE target_id=?",String.class,UUID.fromString(result.get("id").asText()))).isEqualTo("Yeni konu sınıflandırması");
         mvc.perform(write("POST","/api/tags",actor("MEMBER"),Map.of("name",name,"reason","Yetkisiz deneme"))).andExpect(status().isForbidden());
     }
-    @Test void bulkImportRejectsNullPairBeforeWritingCatalog()throws Exception{
+    @Test void bulkImportRejectsInvalidEntryBeforeWritingCatalog()throws Exception{
         var manager=actor("MANAGER");String name="Geçersiz içe aktarım "+UUID.randomUUID();
-        var body=Map.of("universities",List.of(name),"departments",List.of(),"matches",Collections.singletonList(null),"reason","Validation kontrolü");
+        var body=Map.of("universities",List.of(name),"departments",List.of(" "),"reason","Validation kontrolü");
         mvc.perform(write("POST","/api/manager/catalog/bulk-import",manager,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("VALIDATION_FAILED"));
         assertThat(jdbc.queryForObject("SELECT count(*) FROM universities WHERE name=?",Integer.class,name)).isZero();
     }
@@ -122,8 +121,8 @@ class ProfileCatalogIT {
     }
     @Test void studentGraduateAndCandidateConstraintsAreValidatedOnServerAndDatabase()throws Exception{
         var manager=actor("MANAGER");var member=actor("MEMBER");var link=education(manager);var body=profile("UNIVERSITE_OGRENCISI",0);
-        mvc.perform(write("PUT","/api/me/profile",member,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.fieldErrors.universityDepartmentId").exists());
-        body.put("universityDepartmentId",link.get("id").asText());
+        mvc.perform(write("PUT","/api/me/profile",member,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.fieldErrors.universityId").exists());
+        body.put("universityId",link.get("universityId").asText());body.put("departmentId",link.get("departmentId").asText());
         mvc.perform(write("PUT","/api/me/profile",member,body)).andExpect(status().isOk()).andExpect(jsonPath("$.education.universityId").value(link.get("universityId").asText()));
         body.put("educationStatus","MEZUN");body.put("version",1);body.put("graduationYear",9999);
         mvc.perform(write("PUT","/api/me/profile",member,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.fieldErrors.graduationYear").exists());
@@ -149,18 +148,18 @@ class ProfileCatalogIT {
     }
     @Test void missingOrInactiveEducationCannotBeNewlySelectedAndOldReferencesSurvive()throws Exception{
         var manager=actor("MANAGER");var first=actor("MEMBER");var second=actor("MEMBER");var link=education(manager);
-        var body=profile("UNIVERSITE_OGRENCISI",0);body.put("universityDepartmentId",UUID.randomUUID());
+        var body=profile("UNIVERSITE_OGRENCISI",0);body.put("universityId",UUID.randomUUID());body.put("departmentId",link.get("departmentId").asText());
         mvc.perform(write("PUT","/api/me/profile",first,body)).andExpect(status().isNotFound());
-        body.put("universityDepartmentId",link.get("id").asText());
+        body.put("universityId",link.get("universityId").asText());
         mvc.perform(write("PUT","/api/me/profile",first,body)).andExpect(status().isOk());
         String university=link.get("universityId").asText();
         mvc.perform(write("PUT","/api/manager/catalog/UNIVERSITY/"+university+"/status",manager,Map.of("deleted",true,"version",0))).andExpect(status().isOk());
-        mvc.perform(get("/api/universities/"+university+"/departments")).andExpect(jsonPath("$.totalElements").value(0));
-        mvc.perform(write("PUT","/api/me/profile",second,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INACTIVE_EDUCATION"));
+        mvc.perform(get("/api/departments")).andExpect(jsonPath("$.totalElements").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
+        mvc.perform(write("PUT","/api/me/profile",second,body)).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INACTIVE_CATALOG"));
         body.put("version",1);body.put("biography","Yeni biyografi");
         mvc.perform(write("PUT","/api/me/profile",first,body)).andExpect(status().isOk()).andExpect(jsonPath("$.education.available").value(false));
         mvc.perform(write("PUT","/api/manager/catalog/UNIVERSITY/"+university+"/status",manager,Map.of("deleted",false,"version",1))).andExpect(status().isOk());
-        mvc.perform(get("/api/universities/"+university+"/departments")).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/departments")).andExpect(jsonPath("$.totalElements").value(org.hamcrest.Matchers.greaterThanOrEqualTo(1)));
     }
     @Test void softDeletedProfileIsIncompleteAndCanBeCompletedWithoutNewIdentity()throws Exception{
         var member=actor("MEMBER");mvc.perform(write("PUT","/api/me/profile",member,profile("YKS_ADAYI",0))).andExpect(status().isOk());
@@ -181,11 +180,9 @@ class ProfileCatalogIT {
         mvc.perform(write("PUT","/api/manager/catalog/TAG/"+id+"/status",manager,Map.of("deleted",false,"version",2))).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM management_actions WHERE target_id=?",Integer.class,UUID.fromString(id))).isEqualTo(4);
     }
-    @Test void normalizedDuplicateNamesAndPairsAreRejected()throws Exception{
+    @Test void normalizedDuplicateNamesAreRejected()throws Exception{
         var manager=actor("MANAGER");String name="IŞIK "+UUID.randomUUID();create(manager,"UNIVERSITY",name);
         mvc.perform(write("POST","/api/manager/catalog/UNIVERSITY",manager,Map.of("name","  "+name.toLowerCase(Locale.forLanguageTag("tr"))+"  "))).andExpect(status().isConflict());
-        var link=education(manager);
-        mvc.perform(write("POST","/api/manager/university-departments",manager,Map.of("universityId",link.get("universityId").asText(),"departmentId",link.get("departmentId").asText()))).andExpect(status().isConflict());
         mvc.perform(get("/api/universities").param("q",name.toLowerCase(Locale.forLanguageTag("tr")))).andExpect(jsonPath("$.totalElements").value(1));
         mvc.perform(get("/api/universities").param("size","101")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/manager/catalog/INVALID").cookie(manager.cookie())).andExpect(status().isBadRequest());
@@ -193,7 +190,7 @@ class ProfileCatalogIT {
     @Test void adminsOnlyCreateTagsAndNeedACompletedProfile()throws Exception{
         var admin=actor("ADMIN");var manager=actor("MANAGER");
         mvc.perform(write("POST","/api/tags",admin,Map.of("name","Admin "+UUID.randomUUID()))).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("ACCESS_DENIED"));
-        var link=education(manager);var body=profile("UNIVERSITE_OGRENCISI",0);body.put("universityDepartmentId",link.get("id").asText());
+        var link=education(manager);var body=profile("UNIVERSITE_OGRENCISI",0);body.put("universityId",link.get("universityId").asText());body.put("departmentId",link.get("departmentId").asText());
         mvc.perform(write("PUT","/api/me/profile",admin,body)).andExpect(status().isOk());
         mvc.perform(write("POST","/api/tags",admin,Map.of("name","Admin "+UUID.randomUUID()))).andExpect(status().isForbidden());
         mvc.perform(get("/api/manager/catalog/TAG").cookie(admin.cookie())).andExpect(status().isForbidden());

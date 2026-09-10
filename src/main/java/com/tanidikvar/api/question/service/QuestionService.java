@@ -35,15 +35,15 @@ public class QuestionService {
     @Transactional(readOnly=true)
     public QuestionResponse get(UUID id) { return response(find(id,false)); }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
-    public PageResponse<QuestionResponse> list(UUID actor,QuestionScope scope,UUID university,UUID education,UUID tag,int page,int size) {
-        return discover(actor,scope,university,education,tag,null,null,null,null,"NEWEST",page,size);
+    public PageResponse<QuestionResponse> list(UUID actor,QuestionScope scope,UUID university,UUID tag,int page,int size) {
+        return discover(actor,scope,university,tag,null,null,null,null,"NEWEST",page,size);
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
-    public PageResponse<QuestionResponse> discover(UUID actor,QuestionScope scope,UUID university,UUID education,UUID tag,UUID department,UUID admin,String query,PopularPeriod period,String sort,int page,int size) {
+    public PageResponse<QuestionResponse> discover(UUID actor,QuestionScope scope,UUID university,UUID tag,UUID department,UUID admin,String query,PopularPeriod period,String sort,int page,int size) {
         SearchQuery.page(page,size);String search=SearchQuery.clean(query);
         var filters=new HashMap<String,Object>();
         if(actor!=null)filters.put("actor",actor);if(scope!=null)filters.put("scope",scope.name());
-        if(university!=null)filters.put("university",university);if(education!=null)filters.put("education",education);if(tag!=null)filters.put("tag",tag);
+        if(university!=null)filters.put("university",university);if(tag!=null)filters.put("tag",tag);
         if(department!=null)filters.put("department",department);if(admin!=null)filters.put("admin",admin);if(!search.isEmpty())filters.put("query",search);
         if(period!=null) {
             var until=clock.instant();filters.put("until",Timestamp.from(until));filters.put("since",Timestamp.from(until.minusSeconds(period.seconds())));
@@ -66,23 +66,23 @@ public class QuestionService {
         if(title.length()<10||title.length()>200)throw new DomainException(400,"VALIDATION_FAILED","Soru başlığını kontrol et.",Map.of("title","10–200 karakter"));
         if(c.tagIds().size()>5||new HashSet<>(c.tagIds()).size()!=c.tagIds().size())throw new DomainException(400,"VALIDATION_FAILED","Tag seçimini kontrol et.",Map.of("tagIds","En fazla 5 farklı tag"));
         boolean valid=switch(c.scope()) {
-            case GENERAL -> c.universityId()==null && c.universityDepartmentId()==null;
-            case UNIVERSITY -> c.universityId()!=null && c.universityDepartmentId()==null;
-            case UNIVERSITY_DEPARTMENT -> c.universityId()==null && c.universityDepartmentId()!=null;
+            case GENERAL -> c.universityId()==null && c.departmentId()==null;
+            case UNIVERSITY -> c.universityId()!=null && c.departmentId()==null;
+            case UNIVERSITY_DEPARTMENT -> c.universityId()!=null && c.departmentId()!=null;
         };
         if(!valid)throw new DomainException(400,"VALIDATION_FAILED","Soru kapsamıyla eğitim seçimi uyuşmuyor.",Map.of("scope","Kapsama uygun eğitim seç"));
         String body=c.body()==null?null:c.body().strip();
-        return new QuestionContent(title,body==null||body.isEmpty()?null:body,c.scope(),c.universityId(),c.universityDepartmentId(),c.tagIds());
+        return new QuestionContent(title,body==null||body.isEmpty()?null:body,c.scope(),c.universityId(),c.departmentId(),c.tagIds());
     }
     private void references(QuestionContent c,Question old,List<QuestionTagResponse> oldTags) {
         if(c.universityId()!=null)catalog.lockReference(CatalogKind.UNIVERSITY,c.universityId(),old==null||!c.universityId().equals(old.universityId()));
-        if(c.universityDepartmentId()!=null)catalog.lockEducation(c.universityDepartmentId(),old==null||!c.universityDepartmentId().equals(old.universityDepartmentId()));
+        if(c.departmentId()!=null)catalog.lockReference(CatalogKind.DEPARTMENT,c.departmentId(),old==null||!c.departmentId().equals(old.departmentId()));
         var existing=oldTags.stream().map(QuestionTagResponse::id).toList();
         for(UUID id:c.tagIds().stream().sorted().toList())catalog.lockReference(CatalogKind.TAG,id,!existing.contains(id));
     }
     private boolean sameContent(Question q,QuestionContent content,List<QuestionTagResponse> oldTags) {
         return q.title().equals(content.title())&&Objects.equals(q.body(),content.body())&&q.scope()==content.scope()
-                &&Objects.equals(q.universityId(),content.universityId())&&Objects.equals(q.universityDepartmentId(),content.universityDepartmentId())
+                &&Objects.equals(q.universityId(),content.universityId())&&Objects.equals(q.departmentId(),content.departmentId())
                 &&new HashSet<>(oldTags.stream().map(QuestionTagResponse::id).toList()).equals(new HashSet<>(content.tagIds()));
     }
     @Transactional

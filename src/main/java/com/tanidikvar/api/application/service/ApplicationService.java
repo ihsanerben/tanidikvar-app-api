@@ -29,7 +29,7 @@ public class ApplicationService {
   if(account.getAuthority()!=Authority.MEMBER||!p.completed())throw new DomainException(403,"APPLICATION_INELIGIBLE","Profilini tamamla; yalnız Admin olmayan kullanıcılar başvurabilir.");
   if(p.version()!=request.profileVersion())throw new DomainException(409,"STALE_VERSION","Profil değişmiş. Bilgilerini tekrar kontrol et.");
   if(applications.pending(owner))throw new DomainException(409,"APPLICATION_PENDING","Zaten bekleyen bir başvurun var.");
-  if(p.education()!=null)catalog.lockEducation(p.education().id(),true);
+  if(p.education()!=null){catalog.lockReference(com.tanidikvar.api.catalog.entity.CatalogKind.UNIVERSITY,p.education().universityId(),true);catalog.lockReference(com.tanidikvar.api.catalog.entity.CatalogKind.DEPARTMENT,p.education().departmentId(),true);}
   UUID id=UUID.randomUUID();applications.insert(id,owner,request.requestId(),p,null,null);
   return mapper.toResponse(find(id));
  }

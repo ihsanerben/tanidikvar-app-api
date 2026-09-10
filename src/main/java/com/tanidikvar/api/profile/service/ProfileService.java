@@ -2,6 +2,7 @@ package com.tanidikvar.api.profile.service;
 
 import com.tanidikvar.api.auth.service.AccountAccessService;
 import com.tanidikvar.api.catalog.service.CatalogService;
+import com.tanidikvar.api.catalog.entity.CatalogKind;
 import com.tanidikvar.api.common.error.DomainException;
 import com.tanidikvar.api.profile.dto.*;
 import com.tanidikvar.api.profile.entity.*;
@@ -25,7 +26,7 @@ public class ProfileService {
     @Transactional(readOnly=true)
     public ProfileResponse get(UUID id) {
         var p=profiles.find(id).orElse(null);
-        return mapper.toResponse(p,p==null || p.deletedAt()!=null || p.universityDepartmentId()==null?null:catalog.education(p.universityDepartmentId()));
+        return mapper.toResponse(p,p==null || p.deletedAt()!=null || p.universityId()==null?null:catalog.selection(p.universityId(),p.departmentId()));
     }
     @Transactional
     public ProfileResponse update(UUID id,ProfileRequest request) {
@@ -37,19 +38,17 @@ public class ProfileService {
         if(first.isEmpty()) fields.put("firstName","Adını yaz.");
         if(last.isEmpty()) fields.put("lastName","Soyadını yaz.");
         if(request.educationStatus()==EducationStatus.YKS_ADAYI) {
-            if(request.universityDepartmentId()!=null) fields.put("universityDepartmentId","YKS adayı için üniversite/bölüm seçilmez.");
-        } else if(request.universityDepartmentId()==null) fields.put("universityDepartmentId","Üniversiteni ve bölümünü seç.");
+            if(request.universityId()!=null||request.departmentId()!=null) fields.put("departmentId","YKS adayı için üniversite/bölüm seçilmez.");
+        } else { if(request.universityId()==null)fields.put("universityId","Üniversiteni seç.");if(request.departmentId()==null)fields.put("departmentId","Bölümünü seç."); }
         if(request.educationStatus()==EducationStatus.MEZUN) {
             int year=LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul"))).getYear();
             if(request.graduationYear()==null || request.graduationYear()<1900 || request.graduationYear()>year) fields.put("graduationYear","Geçerli bir mezuniyet yılı yaz.");
         } else if(request.graduationYear()!=null) fields.put("graduationYear","Mezuniyet yılı yalnız mezunlar içindir.");
         String linkedin=profileUrl(request.linkedinUrl(),"linkedinUrl",true,fields),portfolio=profileUrl(request.portfolioUrl(),"portfolioUrl",false,fields);
         if(!fields.isEmpty()) throw new DomainException(400,"VALIDATION_FAILED","Profil alanlarını kontrol et.",fields);
-        if(request.universityDepartmentId()!=null) {
-            boolean newSelection=old==null || old.deletedAt()!=null || !Objects.equals(old.universityDepartmentId(),request.universityDepartmentId());
-            catalog.lockEducation(request.universityDepartmentId(),newSelection);
-        }
-        profiles.save(new UserProfile(id,first,last,request.educationStatus(),request.universityDepartmentId(),request.graduationYear(),
+        if(request.universityId()!=null)catalog.lockReference(CatalogKind.UNIVERSITY,request.universityId(),old==null||!Objects.equals(old.universityId(),request.universityId()));
+        if(request.departmentId()!=null)catalog.lockReference(CatalogKind.DEPARTMENT,request.departmentId(),old==null||!Objects.equals(old.departmentId(),request.departmentId()));
+        profiles.save(new UserProfile(id,first,last,request.educationStatus(),request.universityId(),request.departmentId(),request.graduationYear(),
                 optional(request.biography()),optional(request.occupation()),optional(request.company()),linkedin,portfolio,null,request.version()),old!=null);
         return get(id);
     }

@@ -26,6 +26,9 @@ public class CatalogRepository {
     public Optional<CatalogEntry> lock(CatalogKind kind,UUID id) {
         return jdbc.query("SELECT id,name,deleted_at,version FROM "+kind.table()+" WHERE id=? FOR UPDATE",this::entry,id).stream().findFirst();
     }
+    public Optional<CatalogEntry> find(CatalogKind kind,UUID id) {
+        return jdbc.query("SELECT id,name,deleted_at,version FROM "+kind.table()+" WHERE id=?",this::entry,id).stream().findFirst();
+    }
     public Optional<CatalogEntry> byNormalizedName(CatalogKind kind,String normalized) {
         return jdbc.query("SELECT id,name,deleted_at,version FROM "+kind.table()+" WHERE normalized_name=? FOR UPDATE",this::entry,normalized).stream().findFirst();
     }

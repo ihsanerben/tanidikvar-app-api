@@ -32,7 +32,7 @@ public class ManagerWorkspaceService {
  public ManagerAccountResponse saveAccount(UUID actor,ManagerAccountRequest request){manager(actor);var old=repository.identity(actor);version(old.version(),request.version());String first=request.firstName().replaceAll("[\\s\\p{Z}]+"," ").strip(),last=request.lastName().replaceAll("[\\s\\p{Z}]+"," ").strip();if(first.isBlank()||last.isBlank())throw new DomainException(400,"VALIDATION_FAILED","Ad ve soyad gerekiyor.");if(!Objects.equals(old.firstName(),first)||!Objects.equals(old.lastName(),last))repository.saveIdentity(actor,first,last);return accountResponse(repository.identity(actor));}
  @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
  public ManagedUserDetailResponse user(UUID actor,UUID id){reader(actor);var d=repository.detail(id).orElseThrow(this::missing);return new ManagedUserDetailResponse(mapper.user(d.user()),d.universityName(),d.departmentName(),d.graduationYear(),d.avatarFileId(),d.biography(),d.occupation(),d.company(),d.linkedinUrl(),d.portfolioUrl(),d.verificationId(),d.questions(),d.communityAnswers(),d.adminAnswers());}
- private ClassificationResponse classification(ManagementClassification c){return new ClassificationResponse(c.scope(),c.universityId(),c.universityDepartmentId(),c.tagIds(),c.version(),c.universityDepartmentId()==null?null:catalog.education(c.universityDepartmentId()));}
+ private ClassificationResponse classification(ManagementClassification c){return new ClassificationResponse(c.scope(),c.universityId(),c.departmentId(),c.tagIds(),c.version(),c.departmentId()==null?null:catalog.selection(c.universityId(),c.departmentId()));}
  @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
  public ManagedQuestionResponse question(UUID actor,UUID id,int page,int size){reader(actor);SearchQuery.page(page,size);var q=repository.content(id,"QUESTION").orElseThrow(this::missing);return new ManagedQuestionResponse(mapper.content(q),classification(repository.classification(id)),new PageResponse<>(repository.questionAnswers(id,page,size).stream().map(mapper::content).toList(),page,size,repository.questionAnswerCount(id)));}
  @Transactional
@@ -44,19 +44,19 @@ public class ManagerWorkspaceService {
   String body=request.body()==null?content.body():request.body().strip();
   if(body!=null&&body.isEmpty())body=null;
   boolean textChanged=!Objects.equals(content.title(),title)||!Objects.equals(content.body(),body);
-  boolean valid=switch(request.scope()){case GENERAL->request.universityId()==null&&request.universityDepartmentId()==null;case UNIVERSITY->request.universityId()!=null&&request.universityDepartmentId()==null;case UNIVERSITY_DEPARTMENT->request.universityId()==null&&request.universityDepartmentId()!=null;};
+  boolean valid=switch(request.scope()){case GENERAL->request.universityId()==null&&request.departmentId()==null;case UNIVERSITY->request.universityId()!=null&&request.departmentId()==null;case UNIVERSITY_DEPARTMENT->request.universityId()!=null&&request.departmentId()!=null;};
   if(!valid||new HashSet<>(request.tagIds()).size()!=request.tagIds().size())throw new DomainException(400,"VALIDATION_FAILED","Kapsam ve tag seçimini kontrol et.");
   if(request.universityId()!=null)catalog.lockReference(CatalogKind.UNIVERSITY,request.universityId(),!request.universityId().equals(old.universityId()));
-  if(request.universityDepartmentId()!=null)catalog.lockEducation(request.universityDepartmentId(),!request.universityDepartmentId().equals(old.universityDepartmentId()));
+  if(request.departmentId()!=null)catalog.lockReference(com.tanidikvar.api.catalog.entity.CatalogKind.DEPARTMENT,request.departmentId(),!request.departmentId().equals(old.departmentId()));
   for(UUID tag:request.tagIds().stream().sorted().toList())catalog.lockReference(CatalogKind.TAG,tag,!old.tagIds().contains(tag));
-  if(textChanged||old.scope()!=request.scope()||!Objects.equals(old.universityId(),request.universityId())||!Objects.equals(old.universityDepartmentId(),request.universityDepartmentId())||!new HashSet<>(old.tagIds()).equals(new HashSet<>(request.tagIds()))){
-   repository.classify(id,new ManagementClassification(request.scope(),request.universityId(),request.universityDepartmentId(),request.tagIds(),old.version()),title,body,textChanged);
+  if(textChanged||old.scope()!=request.scope()||!Objects.equals(old.universityId(),request.universityId())||!Objects.equals(old.departmentId(),request.departmentId())||!new HashSet<>(old.tagIds()).equals(new HashSet<>(request.tagIds()))){
+   repository.classify(id,new ManagementClassification(request.scope(),request.universityId(),request.departmentId(),request.tagIds(),old.version()),title,body,textChanged);
    repository.audit(actor,textChanged?"EDIT_QUESTION":"CLASSIFY_QUESTION","QUESTION",id,request.reason().strip());
   }
   return classification(repository.classification(id));
  }
  @Transactional(readOnly=true)
- public CatalogUsageResponse usage(UUID actor,String kind,UUID id){reader(actor);if(!Set.of("UNIVERSITY","DEPARTMENT","UNIVERSITY_DEPARTMENT","TAG").contains(kind))throw new DomainException(400,"INVALID_REQUEST","Katalog türünü kontrol et.");var u=repository.usage(kind,id);return new CatalogUsageResponse(u.profiles(),u.questions());}
+ public CatalogUsageResponse usage(UUID actor,String kind,UUID id){reader(actor);if(!Set.of("UNIVERSITY","DEPARTMENT","TAG").contains(kind))throw new DomainException(400,"INVALID_REQUEST","Katalog türünü kontrol et.");var u=repository.usage(kind,id);return new CatalogUsageResponse(u.profiles(),u.questions());}
  @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
  public PageResponse<ManagementActionResponse> actions(UUID actor,String q,String action,String type,java.time.LocalDate dateFrom,java.time.LocalDate dateTo,int page,int size){reader(actor);SearchQuery.page(page,size);q=SearchQuery.clean(q);action=SearchQuery.clean(action);type=SearchQuery.clean(type);if(dateFrom!=null&&dateTo!=null&&dateFrom.isAfter(dateTo))throw new DomainException(400,"INVALID_DATE_RANGE","Başlangıç tarihi bitiş tarihinden sonra olamaz.");var zone=java.time.ZoneId.of("Europe/Istanbul");var from=dateFrom==null?null:dateFrom.atStartOfDay(zone).toInstant();var until=dateTo==null?null:dateTo.plusDays(1).atStartOfDay(zone).toInstant();return new PageResponse<>(repository.filteredActions(q,action,type,from,until,page,size).stream().map(mapper::action).toList(),page,size,repository.filteredActionCount(q,action,type,from,until));}
  @Transactional(readOnly=true)

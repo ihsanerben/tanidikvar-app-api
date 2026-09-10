@@ -15,9 +15,8 @@ public class AdminAnswerRepository {
  JOIN users u ON u.id=a.author_id
  LEFT JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL AND u.deleted_at IS NULL
  JOIN admin_applications v ON v.id=a.verification_application_id
- LEFT JOIN university_departments ud ON ud.id=p.university_department_id
- LEFT JOIN universities university ON university.id=ud.university_id
- LEFT JOIN departments department ON department.id=ud.department_id
+ LEFT JOIN universities university ON university.id=p.university_id
+ LEFT JOIN departments department ON department.id=p.department_id
  LEFT JOIN stored_files f ON f.owner_id=u.id AND f.purpose='AVATAR' AND f.upload_status='READY' AND f.deleted_at IS NULL
  WHERE a.answer_kind='ADMIN'
  """;

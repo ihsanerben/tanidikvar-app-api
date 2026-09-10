@@ -43,7 +43,7 @@ class PilotModeIT {
   jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)",education,university,department);
   Cookie csrfCookie=mvc.perform(get("/api/auth/csrf")).andExpect(status().isOk()).andReturn().getResponse().getCookie("XSRF-TOKEN");
   Cookie cookie=new Cookie("TV_ACCESS",auth.login(email,"Pilot-test-password!").accessToken());
-  mvc.perform(put("/api/me/profile").cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()).contentType("application/json").content("{\"firstName\":\"Pilot\",\"lastName\":\"Katılımcı\",\"educationStatus\":\"UNIVERSITE_OGRENCISI\",\"universityDepartmentId\":\""+education+"\",\"version\":0}"))
+  mvc.perform(put("/api/me/profile").cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()).contentType("application/json").content("{\"firstName\":\"Pilot\",\"lastName\":\"Katılımcı\",\"educationStatus\":\"UNIVERSITE_OGRENCISI\",\"universityId\":\""+university+"\",\"departmentId\":\""+department+"\",\"version\":0}"))
     .andExpect(status().isOk()).andExpect(jsonPath("$.completed").value(true));
   mvc.perform(post("/api/questions").cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()).contentType("application/json").content("{\"requestId\":\""+UUID.randomUUID()+"\",\"content\":{\"title\":\"Pilot ortamında soru oluşturma\",\"scope\":\"GENERAL\",\"tagIds\":[]}}"))
     .andExpect(status().isCreated());

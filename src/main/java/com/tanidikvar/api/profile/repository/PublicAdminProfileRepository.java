@@ -11,9 +11,8 @@ public class PublicAdminProfileRepository {
  private static final String FROM="""
  FROM users u JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL
  JOIN LATERAL (SELECT v.* FROM admin_applications v WHERE v.applicant_id=u.id AND v.status='APPROVED' AND v.deleted_at IS NULL ORDER BY (v.id=u.active_verification_application_id) DESC NULLS LAST,v.reviewed_at DESC,v.id LIMIT 1) v ON true
- LEFT JOIN university_departments ud ON ud.id=p.university_department_id
- LEFT JOIN universities university ON university.id=ud.university_id
- LEFT JOIN departments department ON department.id=ud.department_id
+ LEFT JOIN universities university ON university.id=p.university_id
+ LEFT JOIN departments department ON department.id=p.department_id
  LEFT JOIN stored_files f ON f.owner_id=u.id AND f.purpose='AVATAR' AND f.upload_status='READY' AND f.deleted_at IS NULL
  """;
  private static final String SELECT="""
