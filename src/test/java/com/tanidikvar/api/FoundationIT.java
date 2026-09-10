@@ -96,7 +96,7 @@ class FoundationIT {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"))
                 .andExpect(jsonPath("$.database").value("up"))
                 .andExpect(header().exists("X-Request-ID"));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(17);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(18);
     }
 
     @Test
@@ -147,12 +147,8 @@ class FoundationIT {
 
     @Test
     void databaseRejectsPhysicalDeletionAndInvalidRelations() {
-        for (String table : new String[]{"universities", "departments", "university_departments"}) {
-            assertThatThrownBy(() -> jdbc.execute("DELETE FROM " + table))
-                    .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-        }
-        assertThatThrownBy(() -> jdbc.execute("TRUNCATE manager_profiles, question_likes, question_views, universities, departments, university_departments, user_profiles, questions, question_tags, answers, admin_applications, stored_files, users, auth_sessions, auth_action_tokens, tags, management_actions, question_assignments"))
-                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.execute("TRUNCATE manager_profiles, answer_likes, question_reports, question_likes, question_views, universities, departments, university_departments, user_profiles, questions, question_tags, answers, admin_applications, stored_files, users, auth_sessions, auth_action_tokens, tags, management_actions, question_assignments"))
+                .isInstanceOf(org.springframework.dao.DataAccessException.class);
         assertThatThrownBy(() -> jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)", UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID()))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }

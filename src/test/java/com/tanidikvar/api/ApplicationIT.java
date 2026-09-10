@@ -40,7 +40,7 @@ class ApplicationIT {
   jdbc.update("INSERT INTO user_profiles(user_id,first_name,last_name,education_status,university_department_id) VALUES (?, 'Ada','Yılmaz','UNIVERSITE_OGRENCISI',?)",a.id(),e);return a;
  }
  Actor candidate(){var a=actor("MEMBER");jdbc.update("INSERT INTO user_profiles(user_id,first_name,last_name,education_status) VALUES (?, 'Yiğit','Öztürk','YKS_ADAYI')",a.id());return a;}
- RequestBuilder submitRequest(Actor a,UUID request,long version)throws Exception{return post("/api/me/admin-applications").cookie(a.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("requestId",request,"profileVersion",version)));}
+ RequestBuilder submitRequest(Actor a,UUID request,long version)throws Exception{return post("/api/me/admin-applications").cookie(a.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("requestId",request,"profileVersion",version,"coverLetter","Deneyimlerimle topluluğa fayda sağlamak istiyorum.")));}
  JsonNode submit(Actor a)throws Exception{return mapper.readTree(mvc.perform(submitRequest(a,UUID.randomUUID(),1)).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
  // Simulate a pending application created under the previous re-verification policy.
  JsonNode legacyPending(Actor a)throws Exception{

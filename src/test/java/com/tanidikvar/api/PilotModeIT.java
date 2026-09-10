@@ -49,7 +49,7 @@ class PilotModeIT {
     .andExpect(status().isCreated());
   mvc.perform(post("/api/me/avatar").cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()))
     .andExpect(status().isForbidden());
-  mvc.perform(post("/api/me/admin-applications").contentType("application/json").content("{\"requestId\":\""+UUID.randomUUID()+"\",\"profileVersion\":1}")
+  mvc.perform(post("/api/me/admin-applications").contentType("application/json").content("{\"requestId\":\""+UUID.randomUUID()+"\",\"profileVersion\":1,\"coverLetter\":\"Topluluğa katkı sunmak için başvuruyorum.\"}")
     .cookie(cookie,csrfCookie).header("X-XSRF-TOKEN",csrfCookie.getValue()))
     .andExpect(status().isCreated()).andExpect(jsonPath("$.documentFileId").doesNotExist());
   assertThat(jdbc.queryForObject("SELECT count(*) FROM stored_files WHERE owner_id=?",Long.class,id)).isZero();

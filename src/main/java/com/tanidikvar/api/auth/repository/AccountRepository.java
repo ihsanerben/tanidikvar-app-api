@@ -17,4 +17,7 @@ public interface AccountRepository extends JpaRepository<Account, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from Account u where u.id = :id")
     Optional<Account> lockById(@Param("id") UUID id);
+    @Modifying
+    @Query(value="UPDATE users SET last_login_at=:at,updated_at=:at WHERE id=:id",nativeQuery=true)
+    void recordLogin(@Param("id") UUID id,@Param("at") java.time.Instant at);
 }

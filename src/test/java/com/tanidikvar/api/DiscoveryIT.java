@@ -110,13 +110,13 @@ class DiscoveryIT {
     @Test void adminSearchUsesPublicVerifiedNamesAndAnsweredQuestionFilter()throws Exception {
         String group=UUID.randomUUID().toString();UUID active=user(),former=user(),unverified=user();jdbc.update("UPDATE user_profiles SET first_name=? WHERE user_id=?",group+" IŞIK",active);jdbc.update("UPDATE user_profiles SET first_name=? WHERE user_id=?",group+" Çağrı",former);UUID v=verification(active,group+" IŞIK"),old=verification(former,group+" Çağrı");jdbc.update("UPDATE users SET authority='MEMBER',active_verification_application_id=NULL WHERE id=?",former);
         UUID q=question(active,group+" Ortak cevap"),community=question(active,group+" Topluluk katkısı");answer(q,active,v,NOW.minusSeconds(1));answer(q,former,old,NOW.minusSeconds(1));answer(community,active,null,NOW.minusSeconds(1));
-        var result=list("/api/admins",Map.of("q",group));assertThat(ids(result)).containsExactly(active.toString(),former.toString());assertThat(result.get("items").get(1).get("activeAdmin").asBoolean()).isFalse();
+        var result=list("/api/admins",Map.of("q",group));assertThat(ids(result)).containsExactly(active.toString());
         assertThat(ids(list("/api/admins",Map.of("q",group,"activeOnly","true")))).containsExactly(active.toString());
         assertThat(ids(list("/api/admins",Map.of("q",group+" isik")))).containsExactly(active.toString());
         assertThat(result.toString()).doesNotContain("email","documentFileId","storageKey","test-hash",unverified.toString());
         assertThat(ids(list("/api/questions",Map.of("adminId",active.toString())))).containsExactly(q.toString());assertThat(ids(list("/api/popular",Map.of("adminId",former.toString())))).containsExactly(q.toString());
         jdbc.update("UPDATE user_profiles SET deleted_at=CURRENT_TIMESTAMP WHERE user_id=?",active);
-        assertThat(ids(list("/api/admins",Map.of("q",group)))).containsExactly(former.toString());assertThat(ids(list("/api/questions",Map.of("adminId",active.toString())))).isEmpty();
+        assertThat(ids(list("/api/admins",Map.of("q",group)))).isEmpty();assertThat(ids(list("/api/questions",Map.of("adminId",active.toString())))).isEmpty();
     }
     @Test void inactiveTagsAndCatalogNamesDoNotProduceTextMatches()throws Exception {
         UUID u=user();String group=UUID.randomUUID().toString();UUID uni=catalog("universities",group),tag=catalog("tags",group),q=question(u,"Referansı pasifleşen soru metni");jdbc.update("UPDATE questions SET scope='UNIVERSITY',university_id=? WHERE id=?",uni,q);jdbc.update("INSERT INTO question_tags(question_id,tag_id) VALUES (?,?)",q,tag);

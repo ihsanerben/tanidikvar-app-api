@@ -46,6 +46,7 @@ public class AuthenticationService {
         var account = locked.get();
         if (account.isDeleted()) throw new AuthRejectedException();
         if (!account.isEmailVerified()) throw new EmailUnverifiedException();
+        accounts.recordLogin(account.getId(),clock.instant());
         return issue(account, UUID.randomUUID(), clock.instant().plus(properties.refreshTtl()));
     }
 

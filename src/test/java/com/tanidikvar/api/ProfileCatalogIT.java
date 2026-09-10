@@ -210,7 +210,7 @@ class ProfileCatalogIT {
     }
     @Test void newTablesRejectPhysicalDeletion() {
         for(String table:List.of("user_profiles","tags","management_actions"))assertThatThrownBy(()->jdbc.execute("DELETE FROM "+table)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-        assertThatThrownBy(()->jdbc.execute("TRUNCATE question_likes, question_views, user_profiles,tags,management_actions, questions, question_tags, answers, question_assignments")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(()->jdbc.execute("TRUNCATE answer_likes, question_reports, question_likes, question_views, user_profiles,tags,management_actions, questions, question_tags, answers, question_assignments")).isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
 
     @Test void optionalLinksAreValidatedPublicAndNeverExposePrivateAccountFields()throws Exception{

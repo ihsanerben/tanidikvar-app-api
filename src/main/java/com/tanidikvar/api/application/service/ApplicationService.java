@@ -30,7 +30,7 @@ public class ApplicationService {
   if(p.version()!=request.profileVersion())throw new DomainException(409,"STALE_VERSION","Profil değişmiş. Bilgilerini tekrar kontrol et.");
   if(applications.pending(owner))throw new DomainException(409,"APPLICATION_PENDING","Zaten bekleyen bir başvurun var.");
   if(p.education()!=null){catalog.lockReference(com.tanidikvar.api.catalog.entity.CatalogKind.UNIVERSITY,p.education().universityId(),true);catalog.lockReference(com.tanidikvar.api.catalog.entity.CatalogKind.DEPARTMENT,p.education().departmentId(),true);}
-  UUID id=UUID.randomUUID();applications.insert(id,owner,request.requestId(),p,null,null);
+  UUID id=UUID.randomUUID();applications.insert(id,owner,request.requestId(),p,request.coverLetter().strip(),null,null);
   return mapper.toResponse(find(id));
  }
  @Transactional(readOnly=true)
@@ -54,7 +54,7 @@ public class ApplicationService {
   applications.audit(actor,request.status(),"ADMIN_APPLICATION",id,reason);
   // JPA flush occurs at commit; derive this response's flag from the decision.
   var result=mapper.toResponse(find(id));
-  return new ApplicationResponse(result.id(),result.applicantId(),result.firstName(),result.lastName(),result.educationStatus(),result.universityName(),result.departmentName(),result.graduationYear(),result.occupation(),result.company(),result.status(),result.submittedAt(),result.reviewedBy(),result.reviewedAt(),result.rejectionReason(),result.version(),request.status().equals("APPROVED"));
+  return new ApplicationResponse(result.id(),result.applicantId(),result.firstName(),result.lastName(),result.educationStatus(),result.universityName(),result.departmentName(),result.graduationYear(),result.occupation(),result.company(),result.coverLetter(),result.status(),result.submittedAt(),result.reviewedBy(),result.reviewedAt(),result.rejectionReason(),result.version(),request.status().equals("APPROVED"));
  }
  @Transactional
  public void revoke(UUID actor,UUID owner,RevokeRequest request){

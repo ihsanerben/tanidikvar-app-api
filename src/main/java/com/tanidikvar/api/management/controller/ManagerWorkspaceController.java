@@ -15,6 +15,7 @@ public class ManagerWorkspaceController {
  @GetMapping("/account") public ManagerAccountResponse account(@AuthenticationPrincipal SessionPrincipal p){return workspace.account(p.userId());}
  @PutMapping("/account") public ManagerAccountResponse save(@AuthenticationPrincipal SessionPrincipal p,@Valid @RequestBody ManagerAccountRequest request){return workspace.saveAccount(p.userId(),request);}
  @GetMapping("/users/{id}") public ManagedUserDetailResponse user(@AuthenticationPrincipal SessionPrincipal p,@PathVariable UUID id){return workspace.user(p.userId(),id);}
+ @PutMapping("/users/{id}") public ManagedUserDetailResponse editUser(@AuthenticationPrincipal SessionPrincipal p,@PathVariable UUID id,@Valid @RequestBody ManagedUserEditRequest request){return workspace.editUser(p.userId(),id,request);}
  @GetMapping("/questions/{id}") public ManagedQuestionResponse question(@AuthenticationPrincipal SessionPrincipal p,@PathVariable UUID id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return workspace.question(p.userId(),id,page,size);}
  @PutMapping("/questions/{id}/classification") public ClassificationResponse classify(@AuthenticationPrincipal SessionPrincipal p,@PathVariable UUID id,@Valid @RequestBody ClassificationRequest request){return workspace.classify(p.userId(),id,request);}
  @GetMapping("/catalog-usage/{kind}/{id}") public CatalogUsageResponse usage(@AuthenticationPrincipal SessionPrincipal p,@PathVariable String kind,@PathVariable UUID id){return workspace.usage(p.userId(),kind,id);}

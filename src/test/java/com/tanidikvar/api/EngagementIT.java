@@ -153,6 +153,28 @@ class EngagementIT {
         mvc.perform(write("PUT","/api/answers/"+answer.get("id").asText()+"/status",a,Map.of("deleted",false,"version",1))).andExpect(status().isOk());
         assertThat(stats(q).get("communityAnswerCount").asLong()).isEqualTo(1);
     }
+    @Test void answerLikesAreIdempotentCountedAndClosedWithTheAnswer()throws Exception {
+        var author=member("MEMBER");var reader=member("MEMBER");String q=question(author);
+        var answer=answer(author,q,"Beğeni davranışını doğrulayan topluluk cevabı");String id=answer.get("id").asText(),path="/api/answers/"+id+"/like";
+        mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        mvc.perform(write("PUT",path,reader,Map.of("liked",true))).andExpect(status().isOk()).andExpect(jsonPath("$.liked").value(true)).andExpect(jsonPath("$.likeCount").value(1));
+        mvc.perform(write("PUT",path,reader,Map.of("liked",true))).andExpect(status().isOk()).andExpect(jsonPath("$.likeCount").value(1));
+        mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].likeCount").value(1));
+        mvc.perform(write("PUT",path,reader,Map.of("liked",false))).andExpect(status().isOk()).andExpect(jsonPath("$.likeCount").value(0));
+        mvc.perform(write("PUT","/api/answers/"+id+"/status",author,Map.of("deleted",true,"version",0))).andExpect(status().isOk());
+        mvc.perform(get(path).cookie(reader.cookie())).andExpect(status().isNotFound());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM answer_likes WHERE answer_id=?",Long.class,UUID.fromString(id))).isEqualTo(1);
+    }
+    @Test void questionReportsAreUniqueAndManagersCanResolveThemWithVersionChecks()throws Exception {
+        var author=member("MEMBER");var reporter=member("MEMBER");var manager=actor("MANAGER");String q=question(author),path="/api/questions/"+q+"/reports";
+        mvc.perform(write("POST",path,reporter,Map.of("reason","Yanıltıcı bilgi içerdiğini düşünüyorum."))).andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("OPEN"));
+        mvc.perform(write("POST",path,reporter,Map.of("reason","Aynı soruyu tekrar bildiriyorum."))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REPORT_EXISTS"));
+        var listed=mapper.readTree(mvc.perform(get("/api/manager/reports?status=OPEN&sort=NEWEST").cookie(manager.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1)).andReturn().getResponse().getContentAsString());
+        String id=listed.get("items").get(0).get("id").asText();
+        mvc.perform(write("PUT","/api/manager/reports/"+id,manager,Map.of("status","RESOLVED","reason","Manager incelemesi tamamlandı.","version",1))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STALE_VERSION"));
+        mvc.perform(write("PUT","/api/manager/reports/"+id,manager,Map.of("status","RESOLVED","reason","Manager incelemesi tamamlandı.","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RESOLVED")).andExpect(jsonPath("$.version").value(1));
+        mvc.perform(get("/api/manager/reports").cookie(reporter.cookie())).andExpect(status().isForbidden());
+    }
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired com.tanidikvar.api.engagement.service.EngagementService engagement;
     @Test void outerTransactionFailureRollsBackBothInteractions()throws Exception {

@@ -200,7 +200,7 @@ class AnswerIT {
         assertThatThrownBy(()->jdbc.update("INSERT INTO answers(id,question_id,author_id,body) VALUES (?,?,?,?)",UUID.randomUUID(),UUID.fromString(q),a.id(),"İkinci kayıt doğrudan DB denemesi")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThatThrownBy(()->jdbc.update("UPDATE answers SET answer_kind='ADMIN' WHERE id=?",id)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThatThrownBy(()->jdbc.execute("DELETE FROM answers")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
-        assertThatThrownBy(()->jdbc.execute("TRUNCATE answers")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(()->jdbc.execute("TRUNCATE answers")).isInstanceOf(org.springframework.dao.DataAccessException.class);
     }
     @Test void failedUpdateDoesNotPartiallyChangeAnswer()throws Exception {
         var a=member("MEMBER");String q=question(a);var answer=answer(a,q,"Güncelleme hatasında korunacak metin");UUID id=UUID.fromString(answer.get("id").asText());

@@ -13,7 +13,10 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 public class AnswerController {
     private final AnswerService answers;
-    public AnswerController(AnswerService answers) {this.answers=answers;}
+    private final com.tanidikvar.api.answer.service.AnswerLikeService likes;
+    public AnswerController(AnswerService answers,com.tanidikvar.api.answer.service.AnswerLikeService likes) {this.answers=answers;this.likes=likes;}
+    @GetMapping("/api/answers/{id}/like") public AnswerLikeResponse like(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal principal){return likes.get(principal.userId(),id);}
+    @PutMapping("/api/answers/{id}/like") public AnswerLikeResponse like(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal principal,@Valid @RequestBody AnswerLikeRequest request){return likes.set(principal.userId(),id,request.liked());}
     @GetMapping("/api/me/answers") @SecurityRequirement(name="accessCookie")
     @Operation(summary="Kendi topluluk yorumlarını, kaldırılmış olanlar dahil, okunabilir sorularla listeler")
     public PageResponse<OwnAnswerResponse> history(@AuthenticationPrincipal SessionPrincipal principal,
