@@ -11,6 +11,7 @@ import com.tanidikvar.api.common.error.DomainException;
 import com.tanidikvar.api.profile.service.InteractionPolicy;
 import java.util.UUID;
 import java.util.LinkedHashMap;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.*;
 
@@ -103,8 +104,12 @@ public class CatalogService {
         checkVersion(current.version(),request.version());
         if(current.deletedAt()==null) throw new DomainException(409,"CATALOG_ACTIVE","Üniversiteyi silmeden önce pasife al.");
         if(catalog.universityInUse(id)) throw new DomainException(409,"CATALOG_IN_USE","Bu üniversite geçmiş kayıtlarda kullanıldığı için silinemez.");
+        try {
+            catalog.deleteUniversity(id);
+        } catch(DataIntegrityViolationException exception) {
+            throw new DomainException(409,"CATALOG_IN_USE","Bu üniversite geçmiş kayıtlarda kullanıldığı için silinemez.");
+        }
         catalog.audit(actor,"HARD_DELETE","UNIVERSITY",id,cleanReason);
-        catalog.deleteUniversity(id);
     }
     @Transactional
     public EducationResponse createEducation(UUID actor,EducationCreateRequest request) {
