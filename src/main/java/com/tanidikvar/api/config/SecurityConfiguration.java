@@ -49,7 +49,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/api/profiles/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/questions/*/answers", "/api/questions/*/admin-answers", "/api/questions/*/reports", "/api/me/admin-applications").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "ADMIN")
                         .requestMatchers(HttpMethod.PUT, "/api/questions/*/like", "/api/questions/*/assignment", "/api/answers/*", "/api/answers/*/like", "/api/answers/*/status", "/api/admin-answers/*", "/api/admin-answers/*/status", "/api/questions/*").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "ADMIN")
-                        .requestMatchers(HttpMethod.POST, "/api/questions/*/archive").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "ADMIN")
+                        .requestMatchers(HttpMethod.POST, "/api/questions/*/archive", "/api/questions/*/restore").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "ADMIN")
                         .requestMatchers("/api/me/admin-applications", "/api/files/*/download").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/tags").hasRole("MANAGER")
                         .requestMatchers(HttpMethod.GET, "/api/questions/*/statistics").permitAll()

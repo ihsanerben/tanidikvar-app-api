@@ -1,8 +1,8 @@
 package com.tanidikvar.api.auth.service;
 
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Component;
 
 @Component
@@ -14,11 +14,11 @@ public class SmtpAuthMailDelivery implements AuthMailDelivery {
 
     @Override
     public void send(AuthMailMessage message) {
-        var mail = new SimpleMailMessage();
-        mail.setFrom(message.from());
-        mail.setTo(message.to());
-        mail.setSubject(message.subject());
-        mail.setText(message.text());
-        sender.send(mail);
+        try {
+            var mail = sender.createMimeMessage();
+            var helper = new MimeMessageHelper(mail, true, "UTF-8");
+            helper.setFrom(message.from()); helper.setTo(message.to()); helper.setSubject(message.subject());
+            helper.setText(message.text(), message.html()); sender.send(mail);
+        } catch (jakarta.mail.MessagingException e) { throw new org.springframework.mail.MailPreparationException(e); }
     }
 }

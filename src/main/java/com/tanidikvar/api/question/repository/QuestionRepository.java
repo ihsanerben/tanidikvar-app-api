@@ -13,17 +13,18 @@ public class QuestionRepository {
     private static final String FROM="""
         FROM questions q JOIN users a ON a.id=q.author_id
         LEFT JOIN user_profiles p ON p.user_id=a.id AND p.deleted_at IS NULL AND a.deleted_at IS NULL
+        LEFT JOIN stored_files f ON f.owner_id=a.id AND f.purpose='AVATAR' AND f.upload_status='READY' AND f.deleted_at IS NULL
         LEFT JOIN universities u ON u.id=q.university_id
         LEFT JOIN departments d ON d.id=q.department_id
         """;
-    private static final String SELECT="SELECT q.*,concat_ws(' ',p.first_name,p.last_name) author_name,u.name university_name,d.name department_name "+FROM;
+    private static final String SELECT="SELECT q.*,concat_ws(' ',p.first_name,p.last_name) author_name,u.name university_name,d.name department_name,f.id avatar_file_id,p.education_status,(a.authority='ADMIN' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=a.active_verification_application_id AND v.applicant_id=a.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin "+FROM;
     private Instant time(ResultSet r,String key)throws SQLException { var t=r.getTimestamp(key);return t==null?null:t.toInstant(); }
     private Question map(ResultSet r,int n)throws SQLException {
         String name=r.getString("author_name");
         return new Question(r.getObject("id",UUID.class),r.getObject("author_id",UUID.class),r.getString("title"),r.getString("body"),
                 QuestionScope.valueOf(r.getString("scope")),r.getObject("university_id",UUID.class),r.getObject("department_id",UUID.class),
                 time(r,"created_at"),time(r,"edited_at"),time(r,"archived_at"),time(r,"deleted_at"),r.getLong("version"),
-                name==null||name.isBlank()?null:name,r.getString("university_name"),r.getString("department_name"));
+                name==null||name.isBlank()?null:name,r.getString("university_name"),r.getString("department_name"),r.getObject("avatar_file_id",UUID.class),r.getString("education_status"),r.getBoolean("active_admin"));
     }
     public Optional<Question> find(UUID id,boolean lock) {
         return jdbc.query(SELECT+" WHERE q.id=:id AND q.deleted_at IS NULL"+(lock?" FOR UPDATE OF q":""),Map.of("id",id),this::map).stream().findFirst();
@@ -43,6 +44,7 @@ public class QuestionRepository {
         jdbc.update("UPDATE questions SET title=:title,body=:body,scope=:scope,university_id=:university,department_id=:department,university_department_id=NULL,edited_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=:id",parameters(id,c));
     }
     public void archive(UUID id) { jdbc.update("UPDATE questions SET archived_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=:id",Map.of("id",id)); }
+    public void restore(UUID id) { jdbc.update("UPDATE questions SET archived_at=NULL,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=:id",Map.of("id",id)); }
     public void tags(UUID id,List<UUID> tags) {
         var p=new HashMap<String,Object>();p.put("id",id);p.put("tags",tags);
         jdbc.update("UPDATE question_tags SET deleted_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE question_id=:id AND deleted_at IS NULL"+(tags.isEmpty()?"":" AND tag_id NOT IN (:tags)"),p);
@@ -62,6 +64,7 @@ public class QuestionRepository {
     private String where(Map<String,Object> p) {
         String sql=" WHERE q.deleted_at IS NULL";
         if(p.containsKey("actor"))sql+=" AND q.author_id=:actor";else sql+=" AND q.archived_at IS NULL";
+        if(p.containsKey("archived"))sql+=(Boolean.TRUE.equals(p.get("archived"))?" AND q.archived_at IS NOT NULL":" AND q.archived_at IS NULL");
         if(p.containsKey("scope"))sql+=" AND q.scope=:scope";
         if(p.containsKey("university"))sql+=" AND u.id=:university";
         if(p.containsKey("tag"))sql+=" AND EXISTS (SELECT 1 FROM question_tags qt JOIN tags t ON t.id=qt.tag_id AND t.deleted_at IS NULL WHERE qt.question_id=q.id AND qt.tag_id=:tag AND qt.deleted_at IS NULL)";

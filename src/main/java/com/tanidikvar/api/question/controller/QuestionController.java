@@ -34,8 +34,8 @@ public class QuestionController {
     }
     @GetMapping("/api/me/questions") @SecurityRequirement(name="accessCookie")
     @Operation(summary="Kendi sorularını arşivdekiler dahil listeler")
-    public PageResponse<QuestionResponse> mine(@AuthenticationPrincipal SessionPrincipal principal,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
-        return questions.list(principal.userId(),null,null,null,page,size);
+    public PageResponse<QuestionResponse> mine(@AuthenticationPrincipal SessionPrincipal principal,@RequestParam(defaultValue="ACTIVE") String status,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+        return questions.mine(principal.userId(),status,page,size);
     }
     @GetMapping("/api/questions/{id}")
     @Operation(summary="Soruyu okur; arşiv görünür, soft-deleted soru 404 döner")
@@ -47,4 +47,6 @@ public class QuestionController {
     public QuestionResponse update(@AuthenticationPrincipal SessionPrincipal principal,@PathVariable UUID id,@Valid @RequestBody QuestionUpdateRequest request) { return questions.update(principal.userId(),id,request); }
     @PostMapping("/api/questions/{id}/archive") @SecurityRequirement(name="accessCookie")
     public QuestionResponse archive(@AuthenticationPrincipal SessionPrincipal principal,@PathVariable UUID id,@Valid @RequestBody QuestionArchiveRequest request) { return questions.archive(principal.userId(),id,request); }
+    @PostMapping("/api/questions/{id}/restore") @SecurityRequirement(name="accessCookie")
+    public QuestionResponse restore(@AuthenticationPrincipal SessionPrincipal principal,@PathVariable UUID id,@Valid @RequestBody QuestionArchiveRequest request) { return questions.restore(principal.userId(),id,request); }
 }

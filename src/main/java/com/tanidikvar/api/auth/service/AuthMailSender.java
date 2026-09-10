@@ -36,7 +36,15 @@ public class AuthMailSender {
         String url = frontendUrl + (verify ? "/verify-email" : "/reset-password") + "#token=" + event.token();
         String text = (verify ? "E-posta adresini doğrulamak için (24 saat geçerli):" : "Şifreni yenilemek için (30 dakika geçerli):")
                 + "\n\n" + url + "\n\nBu işlemi sen başlatmadıysan bu e-postayı yok sayabilirsin.";
-        try { delivery.send(new AuthMailMessage(from, event.email(), subject, text)); }
-        catch (RuntimeException e) { log.warn("auth_mail_delivery_failed purpose={}", event.purpose()); }
+        String action = verify ? "E-posta adresimi doğrula" : "Şifremi yenile";
+        String intro = verify ? "E-posta adresini doğrulamak için aşağıdaki butonu kullan. Bu bağlantı 24 saat geçerlidir."
+                : "Şifreni yenilemek için aşağıdaki butonu kullan. Bu bağlantı 30 dakika geçerlidir.";
+        String safeUrl = url.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;");
+        String html = "<div style=\"font-family:Arial,sans-serif;color:#173d31;line-height:1.6\"><p>" + intro + "</p>"
+                + "<p style=\"margin:28px 0\"><a href=\"" + safeUrl + "\" target=\"_blank\" rel=\"noopener noreferrer\" "
+                + "style=\"display:inline-block;padding:13px 22px;border-radius:9px;background:#153f35;color:#fff;text-decoration:none;font-weight:700\">"
+                + action + "</a></p><p style=\"color:#637369;font-size:13px\">Bu işlemi sen başlatmadıysan bu e-postayı yok sayabilirsin.</p></div>";
+        try { delivery.send(new AuthMailMessage(from, event.email(), subject, text, html)); }
+        catch (RuntimeException e) { log.warn("auth_mail_delivery_failed purpose={} errorType={} message={}", event.purpose(), e.getClass().getSimpleName(), e.getMessage()); }
     }
 }

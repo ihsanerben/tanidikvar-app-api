@@ -39,6 +39,15 @@ public class QuestionService {
         return discover(actor,scope,university,tag,null,null,null,null,"NEWEST",page,size);
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public PageResponse<QuestionResponse> mine(UUID actor,String status,int page,int size) {
+        String normalized=status==null?"ACTIVE":status.toUpperCase(Locale.ROOT);
+        if(!Set.of("ACTIVE","ARCHIVED").contains(normalized))throw new DomainException(400,"INVALID_STATUS","Soru durumunu kontrol et.");
+        SearchQuery.page(page,size);
+        var filters=new HashMap<String,Object>();filters.put("actor",actor);filters.put("archived",normalized.equals("ARCHIVED"));
+        var rows=questions.list(filters,"NEWEST",page,size);var ids=rows.stream().map(Question::id).toList();var tags=questions.tags(ids);var summaries=statistics.summaries(ids);
+        return new PageResponse<>(rows.stream().map(q->mapper.toResponse(q,tags.getOrDefault(q.id(),List.of()),summaries.get(q.id()))).toList(),page,size,questions.count(filters));
+    }
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public PageResponse<QuestionResponse> discover(UUID actor,QuestionScope scope,UUID university,UUID tag,UUID department,UUID admin,String query,PopularPeriod period,String sort,int page,int size) {
         SearchQuery.page(page,size);String search=SearchQuery.clean(query);
         var filters=new HashMap<String,Object>();
@@ -112,5 +121,11 @@ public class QuestionService {
         var q=find(id,true);owner(q,actor);
         if(q.archivedAt()!=null)return response(q);
         version(q,request.version());questions.archive(id);return response(find(id,false));
+    }
+    @Transactional
+    public QuestionResponse restore(UUID actor,UUID id,QuestionArchiveRequest request) {
+        var q=find(id,true);owner(q,actor);
+        if(q.archivedAt()==null)return response(q);
+        version(q,request.version());questions.restore(id);return response(find(id,false));
     }
 }

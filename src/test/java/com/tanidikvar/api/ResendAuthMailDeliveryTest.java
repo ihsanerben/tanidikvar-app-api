@@ -30,12 +30,12 @@ class ResendAuthMailDeliveryTest {
                 .andExpect(header("Authorization", "Bearer re_test_key"))
                 .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
                 .andExpect(content().json("""
-                        {"from":"TanıdıkVar <noreply@example.com>","to":"student@example.com","subject":"Doğrula","text":"https://app.example/verify-email#token=test"}
+                        {"from":"TanıdıkVar <noreply@example.com>","to":"student@example.com","subject":"Doğrula","text":"https://app.example/verify-email#token=test","html":"<a href='https://app.example'>Doğrula</a>"}
                         """))
                 .andRespond(withSuccess());
 
         delivery.send(new AuthMailMessage("TanıdıkVar <noreply@example.com>", "student@example.com", "Doğrula",
-                "https://app.example/verify-email#token=test"));
+                "https://app.example/verify-email#token=test", "<a href='https://app.example'>Doğrula</a>"));
 
         server.verify();
     }

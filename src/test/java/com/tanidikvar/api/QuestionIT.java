@@ -123,8 +123,11 @@ class QuestionIT {
         mvc.perform(write("POST",path+"/archive",a,Map.of("version",0))).andExpect(jsonPath("$.version").value(1));
         mvc.perform(get(path)).andExpect(status().isOk());
         mvc.perform(get("/api/questions")).andExpect(jsonPath("$.items[*].id",org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(id))));
-        mvc.perform(get("/api/me/questions").cookie(a.cookie())).andExpect(jsonPath("$.items[0].id").value(id));
+        mvc.perform(get("/api/me/questions").cookie(a.cookie())).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/me/questions").param("status","ARCHIVED").cookie(a.cookie())).andExpect(jsonPath("$.items[0].id").value(id));
         mvc.perform(write("PUT",path,a,Map.of("version",1,"content",c))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("QUESTION_ARCHIVED"));
+        mvc.perform(write("POST",path+"/restore",a,Map.of("version",1))).andExpect(status().isOk()).andExpect(jsonPath("$.archivedAt").isEmpty()).andExpect(jsonPath("$.version").value(2));
+        mvc.perform(get("/api/me/questions").cookie(a.cookie())).andExpect(jsonPath("$.items[0].id").value(id));
         jdbc.update("UPDATE questions SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",UUID.fromString(id));
         mvc.perform(get(path)).andExpect(status().isNotFound());
         mvc.perform(get("/api/me/questions").cookie(a.cookie())).andExpect(jsonPath("$.totalElements").value(0));

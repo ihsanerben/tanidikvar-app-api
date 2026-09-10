@@ -26,9 +26,9 @@ public class ResendAuthMailDelivery implements AuthMailDelivery {
     public void send(AuthMailMessage message) {
         client.post().uri(endpoint).contentType(MediaType.APPLICATION_JSON)
                 .header("Authorization", "Bearer " + apiKey)
-                .body(new ResendEmailRequest(message.from(), message.to(), message.subject(), message.text()))
+                .body(new ResendEmailRequest(message.from(), message.to(), message.subject(), message.text(), message.html()))
                 .retrieve().toBodilessEntity();
     }
 
-    private record ResendEmailRequest(String from, String to, String subject, String text) {}
+    private record ResendEmailRequest(String from, String to, String subject, String text, String html) {}
 }

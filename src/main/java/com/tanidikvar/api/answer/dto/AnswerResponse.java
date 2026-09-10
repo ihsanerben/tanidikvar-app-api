@@ -1,5 +1,5 @@
 package com.tanidikvar.api.answer.dto;
 import java.time.Instant;
 import java.util.UUID;
-public record AnswerResponse(UUID id, UUID questionId, UUID authorId, String authorName, UUID avatarFileId, String educationStatus, String answerKind,
+public record AnswerResponse(UUID id, UUID questionId, UUID authorId, String authorName, UUID avatarFileId, String educationStatus, boolean activeAdmin, String answerKind,
         String body, Instant publishedAt, Instant editedAt, Instant deletedAt, Instant moderatedAt, long likeCount,long version) { }

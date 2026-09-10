@@ -4,4 +4,4 @@ import java.util.UUID;
 public record Question(UUID id, UUID authorId, String title, String body, QuestionScope scope,
         UUID universityId, UUID departmentId, Instant createdAt, Instant editedAt,
         Instant archivedAt, Instant deletedAt, long version, String authorName,
-        String universityName, String departmentName) { }
+        String universityName, String departmentName, UUID avatarFileId, String educationStatus, boolean activeAdmin) { }
