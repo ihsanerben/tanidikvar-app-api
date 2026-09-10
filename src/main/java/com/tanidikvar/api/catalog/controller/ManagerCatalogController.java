@@ -35,6 +35,11 @@ public class ManagerCatalogController {
             @PathVariable CatalogKind kind,@PathVariable UUID id,@Valid @RequestBody CatalogStatusRequest request) {
         return catalog.status(principal.userId(),kind,id,request);
     }
+    @DeleteMapping("/catalog/UNIVERSITY/{id}") @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteUniversity(@AuthenticationPrincipal SessionPrincipal principal,@PathVariable UUID id,
+            @Valid @RequestBody CatalogDeleteRequest request) {
+        catalog.deleteUniversity(principal.userId(),id,request);
+    }
     @GetMapping("/university-departments") public PageResponse<EducationResponse> education(@RequestParam UUID universityId,
             @RequestParam(defaultValue="") String q,@RequestParam(defaultValue="false") boolean includeDeleted,
             @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {

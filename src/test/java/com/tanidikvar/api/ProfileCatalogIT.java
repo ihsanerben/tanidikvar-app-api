@@ -53,7 +53,7 @@ class ProfileCatalogIT {
     }
     MockHttpServletRequestBuilder write(String method,String path,Actor actor,Object body){
         if((path.startsWith("/api/manager/catalog")||path.startsWith("/api/manager/university-departments"))&&body instanceof Map<?,?> map){var enriched=new HashMap<String,Object>();map.forEach((k,v)->enriched.put(k.toString(),v));enriched.putIfAbsent("reason","Test kataloğu yönetimi");body=enriched;}
-        return (method.equals("PUT")?put(path):post(path)).cookie(actor.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body));
+        return (method.equals("PUT")?put(path):method.equals("DELETE")?delete(path):post(path)).cookie(actor.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body));
     }
     JsonNode create(Actor actor,String kind,String name)throws Exception{
         return mapper.readTree(mvc.perform(write("POST","/api/manager/catalog/"+kind,actor,Map.of("name",name))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
@@ -61,6 +61,16 @@ class ProfileCatalogIT {
     JsonNode education(Actor manager)throws Exception{
         var university=create(manager,"UNIVERSITY","Üniversite "+UUID.randomUUID());var department=create(manager,"DEPARTMENT","Bölüm "+UUID.randomUUID());
         var selection=mapper.createObjectNode();selection.set("universityId",university.get("id"));selection.set("departmentId",department.get("id"));return selection;
+    }
+    @Test void managerCanPermanentlyDeleteOnlyUnusedInactiveUniversity()throws Exception{
+        var manager=actor("MANAGER");
+        var university=create(manager,"UNIVERSITY","Silinecek Üniversite "+UUID.randomUUID());
+        String path="/api/manager/catalog/UNIVERSITY/"+university.get("id").asText();
+        mvc.perform(write("DELETE",path,manager,Map.of("version",0))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CATALOG_ACTIVE"));
+        mvc.perform(write("PUT",path+"/status",manager,Map.of("deleted",true,"version",0))).andExpect(status().isOk());
+        mvc.perform(write("DELETE",path,manager,Map.of("version",1))).andExpect(status().isNoContent());
+        mvc.perform(get("/api/manager/catalog/UNIVERSITY").cookie(manager.cookie()).param("includeDeleted","true").param("q",university.get("name").asText()))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
     }
     @Test void managerBulkImportIsAtomicAndSkipsExistingNames()throws Exception{
         var manager=actor("MANAGER");String suffix=UUID.randomUUID().toString();String university="Toplu Üniversite "+suffix,department="Toplu Bölüm "+suffix;

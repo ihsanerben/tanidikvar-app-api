@@ -97,6 +97,16 @@ public class CatalogService {
         return mapper.toResponse(catalog.lock(kind,id).orElseThrow(this::missing));
     }
     @Transactional
+    public void deleteUniversity(UUID actor,UUID id,CatalogDeleteRequest request) {
+        manager(actor); String cleanReason=reason(request.reason());
+        var current=catalog.lock(CatalogKind.UNIVERSITY,id).orElseThrow(this::missing);
+        checkVersion(current.version(),request.version());
+        if(current.deletedAt()==null) throw new DomainException(409,"CATALOG_ACTIVE","Üniversiteyi silmeden önce pasife al.");
+        if(catalog.universityInUse(id)) throw new DomainException(409,"CATALOG_IN_USE","Bu üniversite geçmiş kayıtlarda kullanıldığı için silinemez.");
+        catalog.audit(actor,"HARD_DELETE","UNIVERSITY",id,cleanReason);
+        catalog.deleteUniversity(id);
+    }
+    @Transactional
     public EducationResponse createEducation(UUID actor,EducationCreateRequest request) {
         manager(actor); reason(request.reason());
         var university=catalog.lock(CatalogKind.UNIVERSITY,request.universityId()).orElseThrow(this::missing);

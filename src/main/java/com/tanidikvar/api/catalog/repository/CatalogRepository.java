@@ -42,6 +42,19 @@ public class CatalogRepository {
     public void status(CatalogKind kind,UUID id,boolean deleted) {
         jdbc.update("UPDATE "+kind.table()+" SET deleted_at=CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=?",deleted,id);
     }
+    public boolean universityInUse(UUID id) {
+        return jdbc.queryForObject("""
+                SELECT EXISTS (
+                  SELECT 1 FROM user_profiles WHERE university_id=? OR university_department_id IN (SELECT id FROM university_departments WHERE university_id=?)
+                  UNION ALL SELECT 1 FROM questions WHERE university_id=? OR university_department_id IN (SELECT id FROM university_departments WHERE university_id=?)
+                  UNION ALL SELECT 1 FROM admin_applications WHERE university_id=? OR university_department_id IN (SELECT id FROM university_departments WHERE university_id=?)
+                )
+                """,Boolean.class,id,id,id,id,id,id);
+    }
+    public void deleteUniversity(UUID id) {
+        jdbc.update("DELETE FROM university_departments WHERE university_id=?",id);
+        jdbc.update("DELETE FROM universities WHERE id=?",id);
+    }
     private static final String EDUCATION = "SELECT ud.id,ud.university_id,u.name university_name,ud.department_id,d.name department_name,ud.deleted_at,ud.version,(ud.deleted_at IS NULL AND u.deleted_at IS NULL AND d.deleted_at IS NULL) available FROM university_departments ud JOIN universities u ON u.id=ud.university_id JOIN departments d ON d.id=ud.department_id ";
     private EducationResponse mapEducation(ResultSet rs,int n) throws SQLException {
         return new EducationResponse(rs.getObject("id",UUID.class),rs.getObject("university_id",UUID.class),rs.getString("university_name"),
