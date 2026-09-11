@@ -35,15 +35,21 @@ public class AuthMailSender {
         // Fragment keeps the secret out of frontend access logs and HTTP Referer.
         String url = frontendUrl + (verify ? "/verify-email" : "/reset-password") + "#token=" + event.token();
         String text = (verify ? "E-posta adresini doğrulamak için (24 saat geçerli):" : "Şifreni yenilemek için (30 dakika geçerli):")
-                + "\n\n" + url + "\n\nBu işlemi sen başlatmadıysan bu e-postayı yok sayabilirsin.";
+                + "\n\n" + url + "\n\nBu işlemi sen başlatmadıysan bu e-postayı yok sayabilirsin."
+                + "\n\nSevgiler,\nTanıdıkVar Ekibi";
         String action = verify ? "E-posta adresimi doğrula" : "Şifremi yenile";
         String intro = verify ? "E-posta adresini doğrulamak için aşağıdaki butonu kullan. Bu bağlantı 24 saat geçerlidir."
                 : "Şifreni yenilemek için aşağıdaki butonu kullan. Bu bağlantı 30 dakika geçerlidir.";
         String safeUrl = url.replace("&", "&amp;").replace("\"", "&quot;").replace("<", "&lt;").replace(">", "&gt;");
-        String html = "<div style=\"font-family:Arial,sans-serif;color:#173d31;line-height:1.6\"><p>" + intro + "</p>"
+        String html = "<div style=\"margin:0;padding:32px 16px;background:#f4f5ef;font-family:Arial,sans-serif;color:#173d31;line-height:1.6\">"
+                + "<div style=\"max-width:560px;margin:0 auto;overflow:hidden;border:1px solid #dbe2d5;border-radius:18px;background:#fff;box-shadow:0 8px 28px rgba(23,61,49,.08)\">"
+                + "<div style=\"padding:22px 28px;background:#173d31;color:#fff;font-size:22px;font-weight:800;letter-spacing:-.4px\">tanıdıkvar</div>"
+                + "<div style=\"padding:30px 28px\"><h1 style=\"margin:0 0 14px;font-size:24px;line-height:1.3\">" + (verify ? "Aramıza hoş geldin!" : "Yeni şifreni oluşturalım") + "</h1>"
+                + "<p style=\"margin:0;color:#50645b\">" + intro + "</p>"
                 + "<p style=\"margin:28px 0\"><a href=\"" + safeUrl + "\" target=\"_blank\" rel=\"noopener noreferrer\" "
-                + "style=\"display:inline-block;padding:13px 22px;border-radius:9px;background:#153f35;color:#fff;text-decoration:none;font-weight:700\">"
-                + action + "</a></p><p style=\"color:#637369;font-size:13px\">Bu işlemi sen başlatmadıysan bu e-postayı yok sayabilirsin.</p></div>";
+                + "style=\"display:inline-block;padding:14px 22px;border-radius:10px;background:#2f8f57;color:#fff;text-decoration:none;font-weight:700\">"
+                + action + "</a></p><div style=\"padding:14px 16px;border-radius:10px;background:#f5f7f2;color:#637369;font-size:13px\">Bu işlemi sen başlatmadıysan bu e-postayı güvenle yok sayabilirsin.</div>"
+                + "<p style=\"margin:26px 0 0;color:#50645b\">Sevgiler,<br><strong>TanıdıkVar Ekibi</strong></p></div></div></div>";
         try { delivery.send(new AuthMailMessage(from, event.email(), subject, text, html)); }
         catch (RuntimeException e) { log.warn("auth_mail_delivery_failed purpose={} errorType={} message={}", event.purpose(), e.getClass().getSimpleName(), e.getMessage()); }
     }

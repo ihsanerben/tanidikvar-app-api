@@ -34,8 +34,8 @@ services:
       SPRING_PROFILES_ACTIVE: local
       SERVER_PORT: 8080
       COOKIE_SECURE: "false"
-      CORS_ALLOWED_ORIGIN: ${DOCKER_WEB_ORIGIN:-http://localhost:5173}
-      FRONTEND_URL: ${DOCKER_WEB_ORIGIN:-http://localhost:5173}
+      CORS_ALLOWED_ORIGIN: ${CORS_ALLOWED_ORIGIN:-http://localhost:5173}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       SMTP_HOST: mailpit
       SMTP_PORT: 1025
       MAIL_FROM: ${MAIL_FROM:-noreply@tanidikvar.local}
@@ -49,19 +49,6 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
-  web:
-    profiles: [app]
-    build:
-      context: ${WEB_BUILD_CONTEXT:-../tanidikvar-app-web}
-      args:
-        VITE_API_BASE_URL: /
-    environment:
-      API_UPSTREAM: http://api:8080
-    ports:
-      - "127.0.0.1:${DOCKER_WEB_PORT:-5173}:80"
-    depends_on:
-      api:
-        condition: service_healthy
 volumes:
   api_storage:
   postgres_data:

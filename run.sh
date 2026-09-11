@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 usage() {
   echo 'Kullanım: ./run.sh [--docker | --status | --stop | --help]'
   echo '  (seçeneksiz) API yerelde, PostgreSQL ve Mailpit Docker üzerinden başlar.'
-  echo '  --docker     Dört servisi derler ve Docker üzerinden başlatır.'
+  echo '  --docker     PostgreSQL, Mailpit ve API servislerini Docker üzerinden başlatır.'
   echo '  --status     Çalışan ve durmuş Docker servislerini gösterir; değişiklik yapmaz.'
   echo '  --stop       Docker servislerini durdurur; veritabanı ve dosya volume’ları korunur.'
 }
@@ -36,13 +36,8 @@ set +a
 : "${DB_USERNAME:?DB_USERNAME zorunlu}"
 if [[ "${1:-}" == "--docker" ]]; then
   : "${JWT_SECRET:?JWT_SECRET zorunlu}"
-  if [[ ! -f "${WEB_BUILD_CONTEXT:-../tanidikvar-app-web}/Dockerfile" ]]; then
-    echo "Web Dockerfile bulunamadı. .env içindeki WEB_BUILD_CONTEXT yolunu kontrol et." >&2
-    exit 1
-  fi
-  export DOCKER_WEB_ORIGIN="${DOCKER_WEB_ORIGIN:-http://localhost:${DOCKER_WEB_PORT:-5173}}"
   docker compose --profile app up -d --build --wait
-  echo "TanıdıkVar hazır: ${DOCKER_WEB_ORIGIN}"
+  echo "TanıdıkVar API hazır: http://localhost:${SERVER_PORT:-8080}"
   exit 0
 fi
 if lsof -nP -iTCP:"${SERVER_PORT:-8080}" -sTCP:LISTEN >/dev/null 2>&1; then

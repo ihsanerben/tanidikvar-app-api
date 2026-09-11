@@ -14,12 +14,14 @@ public class AnswerRepository {
         FROM answers a JOIN questions q ON q.id=a.question_id AND q.deleted_at IS NULL
         JOIN users u ON u.id=a.author_id
         LEFT JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL AND u.deleted_at IS NULL
+        LEFT JOIN universities university ON university.id=p.university_id
+        LEFT JOIN departments department ON department.id=p.department_id
         LEFT JOIN stored_files f ON f.owner_id=p.user_id AND f.purpose='AVATAR' AND f.upload_status='READY' AND f.deleted_at IS NULL
         """;
-    private static final String SELECT="SELECT a.*,f.id avatar_file_id,p.education_status,nullif(concat_ws(' ',p.first_name,p.last_name),'') author_name,(u.authority='ADMIN' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=u.active_verification_application_id AND v.applicant_id=u.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin,(SELECT count(*) FROM answer_likes l WHERE l.answer_id=a.id AND l.deleted_at IS NULL) like_count "+FROM;
+    private static final String SELECT="SELECT a.*,f.id avatar_file_id,p.education_status,university.name university_name,department.name department_name,nullif(concat_ws(' ',p.first_name,p.last_name),'') author_name,(u.authority='ADMIN' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=u.active_verification_application_id AND v.applicant_id=u.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin,(SELECT count(*) FROM answer_likes l WHERE l.answer_id=a.id AND l.deleted_at IS NULL) like_count "+FROM;
     private Instant time(ResultSet r,String key)throws SQLException {var t=r.getTimestamp(key);return t==null?null:t.toInstant();}
     private Answer map(ResultSet r,int n)throws SQLException {
-        return new Answer(r.getObject("id",UUID.class),r.getObject("question_id",UUID.class),r.getObject("author_id",UUID.class),r.getString("author_name"),r.getObject("avatar_file_id",UUID.class),r.getString("education_status"),r.getBoolean("active_admin"),r.getString("body"),
+        return new Answer(r.getObject("id",UUID.class),r.getObject("question_id",UUID.class),r.getObject("author_id",UUID.class),r.getString("author_name"),r.getObject("avatar_file_id",UUID.class),r.getString("education_status"),r.getBoolean("active_admin"),r.getString("university_name"),r.getString("department_name"),r.getString("body"),
                 time(r,"published_at"),time(r,"edited_at"),time(r,"deleted_at"),time(r,"moderated_at"),r.getLong("like_count"),r.getLong("version"));
     }
     public Optional<Answer> find(UUID id) { return jdbc.query(SELECT+" WHERE a.id=? AND a.answer_kind='COMMUNITY'",this::map,id).stream().findFirst(); }
@@ -35,7 +37,7 @@ public class AnswerRepository {
         return jdbc.queryForObject("SELECT count(*) "+FROM+" WHERE a.author_id=? AND a.answer_kind='COMMUNITY' AND a.deleted_at IS NULL AND a.moderated_at IS NULL",Long.class,author);
     }
     public List<OwnAnswerEntry> listMine(UUID actor,String scope,int page,int size) {
-        return jdbc.query("SELECT a.*,f.id avatar_file_id,p.education_status,q.title question_title,nullif(concat_ws(' ',p.first_name,p.last_name),'') author_name,(u.authority='ADMIN' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=u.active_verification_application_id AND v.applicant_id=u.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin,(SELECT count(*) FROM answer_likes l WHERE l.answer_id=a.id AND l.deleted_at IS NULL) like_count "+FROM+
+        return jdbc.query("SELECT a.*,f.id avatar_file_id,p.education_status,university.name university_name,department.name department_name,q.title question_title,nullif(concat_ws(' ',p.first_name,p.last_name),'') author_name,(u.authority='ADMIN' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=u.active_verification_application_id AND v.applicant_id=u.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin,(SELECT count(*) FROM answer_likes l WHERE l.answer_id=a.id AND l.deleted_at IS NULL) like_count "+FROM+
                 " WHERE a.author_id=? AND a.answer_kind='COMMUNITY' AND (?::varchar IS NULL OR q.scope=?) ORDER BY a.published_at DESC,a.id DESC LIMIT ? OFFSET ?",
                 (r,n)->new OwnAnswerEntry(map(r,n),r.getString("question_title")),actor,scope,scope,size,page*size);
     }

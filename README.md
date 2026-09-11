@@ -10,11 +10,7 @@ Docker Desktop ve Python 3 açık/kurulu olsun. API reposunda:
 ./run.sh --docker
 ```
 
-PostgreSQL, Mailpit, API ve web birlikte derlenir/başlatılır; servislerin health kontrolü beklenir. Web http://localhost:5173, API http://localhost:8080, e-postalar http://localhost:8025. Java/Node kurulumu Docker çalıştırması için gerekmez. Web Nginx üzerinden aynı origin `/api` yoluna bağlanır.
-
-Web repo varsayılan olarak `../tanidikvar-app-web` konumunda aranır. Ayrı bir konumda clone ettiysen API `.env` içine `WEB_BUILD_CONTEXT=/tam/yol/web-reposu` yaz. API/web Dockerfile ve ignore dosyaları kendi repolarındadır; ortak kök dosyası gerekmez. API'yi tek başına kullanmak web reposunu gerektirmez.
-
-`DOCKER_WEB_PORT` farklıysa launcher e-posta/CORS origin'ini otomatik `http://localhost:<port>` yapar. Farklı host kullanacaksan `DOCKER_WEB_ORIGIN` ayarla. Sonraki kod değişiklikleri için aynı komutu tekrar çalıştır; bu Docker akışı derlenmiş uygulamadır, hot reload yapmaz.
+PostgreSQL, Mailpit ve API birlikte başlatılır; servislerin health kontrolü beklenir. API http://localhost:8080, e-postalar http://localhost:8025 adresindedir. Web Docker'a dahil değildir; frontend kendi reposunda `npm run dev` ile çalıştırılır.
 
 Durdurma (veri korunur):
 
@@ -22,11 +18,11 @@ Durdurma (veri korunur):
 docker compose --profile app stop
 ```
 
-Loglar: `docker compose logs -f api web`. DB volume aynı `tanidikvar_postgres_data`; container storage `tanidikvar_api_storage` volume'ündedir. Local `.local/storage` ile ayrı dizinlerdir; henüz dosya yükleme verisi yoktur. Production HTTPS/SMTP/deployment ayarları bu yerel Compose akışından ayrıdır. Mevcut ücretsiz Render pilotu için [production deployment rehberine](docs/PRODUCTION_DEPLOYMENT.md), AWS EC2 geçişi için [AWS dağıtım rehberine](deploy/aws/README.md) bak.
+Loglar: `docker compose logs -f api`. DB volume aynı `tanidikvar_postgres_data`; container storage `tanidikvar_api_storage` volume'ündedir. Local `.local/storage` ile ayrı dizinlerdir; henüz dosya yükleme verisi yoktur. Production HTTPS/SMTP/deployment ayarları bu yerel Compose akışından ayrıdır. Mevcut ücretsiz Render pilotu için [production deployment rehberine](docs/PRODUCTION_DEPLOYMENT.md), AWS EC2 geçişi için [AWS dağıtım rehberine](deploy/aws/README.md) bak.
 
 ## Ayrı geliştirme süreçleri
 
-Docker API/web çalışıyorsa önce `docker compose stop api web` ile portları boşalt. Eski geliştirme akışı korunur: API `./run.sh`, web kendi reposunda `npm run dev`.
+Docker API çalışıyorsa yerel API'ye geçmeden önce `docker compose stop api` ile portu boşalt. Web kendi reposunda `npm run dev` ile çalışır.
 
 ## Kurulum ve çalıştırma
 
@@ -221,12 +217,12 @@ Bu teslimde `./mvnw verify`: 111 test başarılı; gerçek PostgreSQL üzerinde 
 
 ## Yerel kullanım komutları
 
-- `./run.sh --docker`: tüm servisleri derle/başlat.
+- `./run.sh --docker`: PostgreSQL, Mailpit ve API servislerini derle/başlat.
 - `./run.sh --status`: durmuş olanlar dahil Docker servislerini göster; ayar veya veri değiştirmez.
 - `./run.sh --stop`: Docker servislerini durdur; DB ve yükleme volume’larını korur.
 - `./run.sh --help`: komut özeti.
 
-Seçeneksiz `./run.sh` yerel Java geliştirme akışını korur. Hatalı/ek seçenekler ayar oluşturulmadan reddedilir. Status/stop mevcut `.env` ister; otomatik kurulum yapmaz. Ayrı terminalde çalışan API/web süreçlerini bu komutlar sonlandırmaz; Ctrl+C kullan.
+Seçeneksiz `./run.sh` yerel Java geliştirme akışını korur. Hatalı/ek seçenekler ayar oluşturulmadan reddedilir. Status/stop mevcut `.env` ister; otomatik kurulum yapmaz. Ayrı terminalde çalışan API veya web süreçlerini bu komutlar sonlandırmaz; Ctrl+C kullan.
 
 Yerel e-postalar Mailpit `http://localhost:8025` ekranındadır. Uzun kullanımda Docker dosya volume’u ile yerel `.local/storage` dizininin farklı olduğunu dikkate al; aynı çalışma biçiminde kal. Otomatik dosya taşıma/sıfırlama yoktur.
 

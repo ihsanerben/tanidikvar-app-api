@@ -169,7 +169,12 @@ class EngagementIT {
         var author=member("MEMBER");var reporter=member("MEMBER");var manager=actor("MANAGER");String q=question(author),path="/api/questions/"+q+"/reports";
         mvc.perform(write("POST",path,reporter,Map.of("reason","Yanıltıcı bilgi içerdiğini düşünüyorum."))).andExpect(status().isCreated()).andExpect(jsonPath("$.status").value("OPEN"));
         mvc.perform(write("POST",path,reporter,Map.of("reason","Aynı soruyu tekrar bildiriyorum."))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("REPORT_EXISTS"));
-        var listed=mapper.readTree(mvc.perform(get("/api/manager/reports?status=OPEN&sort=NEWEST").cookie(manager.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1)).andReturn().getResponse().getContentAsString());
+        var listed=mapper.readTree(mvc.perform(get("/api/manager/reports?status=OPEN&sort=NEWEST").cookie(manager.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalElements").value(1))
+                .andExpect(jsonPath("$.items[0].questionAuthorId").value(author.id().toString()))
+                .andExpect(jsonPath("$.items[0].questionAuthorName").value("Ada Yılmaz"))
+                .andReturn().getResponse().getContentAsString());
         String id=listed.get("items").get(0).get("id").asText();
         mvc.perform(write("PUT","/api/manager/reports/"+id,manager,Map.of("status","RESOLVED","reason","Manager incelemesi tamamlandı.","version",1))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STALE_VERSION"));
         mvc.perform(write("PUT","/api/manager/reports/"+id,manager,Map.of("status","RESOLVED","reason","Manager incelemesi tamamlandı.","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RESOLVED")).andExpect(jsonPath("$.version").value(1));

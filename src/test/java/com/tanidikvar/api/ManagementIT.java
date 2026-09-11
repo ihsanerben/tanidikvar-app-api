@@ -83,6 +83,23 @@ class ManagementIT {
   assertThat(jdbc.queryForObject("SELECT deleted_at IS NULL FROM answers WHERE id=?",Boolean.class,answer)).isTrue();
   assertThat(jdbc.queryForObject("SELECT count(*) FROM management_actions WHERE target_id=?",Long.class,q)).isEqualTo(2);
  }
+ @Test void contentListSeparatesArchivedQuestionsAndIdentifiesQuestionAndCommentAuthors()throws Exception{
+  var m=actor("MANAGER");var asker=actor("MEMBER");var commenter=actor("MEMBER");profile(asker);profile(commenter);UUID q=question(asker),comment=answer(commenter,q,null);
+  jdbc.update("UPDATE questions SET archived_at=CURRENT_TIMESTAMP WHERE id=?",q);
+  mvc.perform(get("/api/manager/content").cookie(m.cookie()).param("kind","QUESTION").param("status","ARCHIVED").param("q",q.toString()))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.items[0].questionAuthorId").value(asker.id().toString())).andExpect(jsonPath("$.items[0].questionAuthorName").value("Ada Yılmaz"));
+  mvc.perform(get("/api/manager/content").cookie(m.cookie()).param("kind","QUESTION").param("status","VISIBLE").param("q",q.toString()))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+  mvc.perform(get("/api/manager/content").cookie(m.cookie()).param("kind","COMMUNITY").param("status","ALL"))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].id").value(comment.toString())).andExpect(jsonPath("$.items[0].authorId").value(commenter.id().toString())).andExpect(jsonPath("$.items[0].questionAuthorId").value(asker.id().toString()));
+ }
+ @Test void managerEditsCommunityCommentWithReasonVersionAndAudit()throws Exception{
+  var manager=actor("MANAGER");var author=actor("MEMBER");UUID question=question(author),comment=answer(author,question,null);String path="/api/manager/content/COMMUNITY/"+comment;
+  mvc.perform(write("PUT",path,manager,Map.of("body","Manager tarafından düzeltilen yorum metni","reason","Yanıltıcı ifade düzeltildi","version",0)))
+   .andExpect(status().isOk()).andExpect(jsonPath("$.body").value("Manager tarafından düzeltilen yorum metni")).andExpect(jsonPath("$.version").value(1));
+  mvc.perform(write("PUT",path,manager,Map.of("body","Eski sürümle değiştirilemez yorum","reason","Eski sürüm testi","version",0))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STALE_VERSION"));
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM management_actions WHERE action='EDIT_CONTENT' AND target_id=? AND reason='Yanıltıcı ifade düzeltildi'",Long.class,comment)).isEqualTo(1);
+ }
  @Test void moderatedCommunityAnswerCannotBeEditedRecreatedOrRestoredByOwner()throws Exception{
   var m=actor("MANAGER");var a=actor("MEMBER");profile(a);UUID q=question(a),id=answer(a,q,null);String own="/api/answers/"+id;
   moderate(m,id,"COMMUNITY",true,0).andExpect(status().isOk());

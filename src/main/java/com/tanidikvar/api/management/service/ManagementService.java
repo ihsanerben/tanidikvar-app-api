@@ -20,7 +20,7 @@ public class ManagementService {
  private DomainException denied(){return new DomainException(403,"ACCESS_DENIED","Bu işlem için Manager yetkisi gerekiyor. Manager hesapları pasifleştirilemez.");}
  private void manager(UUID actor){if(accounts.lockActive(actor).getAuthority()!=Authority.MANAGER)throw denied();}
  private void reader(UUID actor){var a=repository.user(actor).orElseThrow(this::denied);if(a.deletedAt()!=null||!a.emailVerified()||!a.authority().equals("MANAGER"))throw denied();}
- private String status(String status){if(!Set.of("ALL","VISIBLE","HIDDEN").contains(status))throw new DomainException(400,"INVALID_REQUEST","Durum filtresini kontrol et.");return status;}
+ private String status(String status){if(!Set.of("ALL","VISIBLE","ARCHIVED","HIDDEN").contains(status))throw new DomainException(400,"INVALID_REQUEST","Durum filtresini kontrol et.");return status;}
  private String kind(String kind){if(!Set.of("QUESTION","COMMUNITY","ADMIN").contains(kind))throw new DomainException(400,"INVALID_REQUEST","İçerik türünü kontrol et.");return kind;}
  private void version(long actual,long requested){if(actual!=requested)throw new DomainException(409,"STALE_VERSION","Kayıt değişmiş. Güncel listeyi yükle.");}
  private String reason(ManagementStatusRequest request){if(request.hidden()==null||request.reason()==null||request.reason().isBlank()||request.reason().strip().length()>1000||request.version()<0)throw new DomainException(400,"REASON_REQUIRED","Gerekçe yaz (en fazla 1000 karakter).");return request.reason().strip();}
@@ -63,6 +63,16 @@ public class ManagementService {
   if((a.moderatedAt()!=null)!=request.hidden()){
    repository.moderate(id,kind,request.hidden());repository.audit(actor,request.hidden()?"HIDE_CONTENT":"RESTORE_CONTENT",kind,id,reason);
   }
+  return mapper.content(find(id,kind));
+ }
+ @Transactional
+ public ManagedContentResponse editContent(UUID actor,UUID id,String kind,ManagementContentEditRequest request){
+  kind(kind);if(kind.equals("QUESTION"))throw new DomainException(400,"INVALID_REQUEST","Soru, soru düzenleme ekranından değiştirilir.");
+  var before=find(id,kind);if(!repository.lockQuestion(before.questionId()))throw missing();manager(actor);var current=find(id,kind);version(current.version(),request.version());
+  String body=request.body().strip(),why=request.reason().strip();
+  if(body.length()<10||body.length()>5000||why.isEmpty()||why.length()>1000)throw new DomainException(400,"VALIDATION_FAILED","Yorum metnini ve gerekçeyi kontrol et.");
+  if(current.moderatedAt()!=null||current.deletedAt()!=null)throw new DomainException(409,"CONTENT_CLOSED","Gizli veya kaldırılmış yorum düzenlenemez.");
+  if(!Objects.equals(current.body(),body)){repository.editAnswer(id,body);repository.audit(actor,"EDIT_CONTENT",kind,id,why);}
   return mapper.content(find(id,kind));
  }
 }
