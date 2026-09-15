@@ -56,6 +56,7 @@ public class AnswerService {
     }
     @Transactional
     public AnswerResponse create(UUID question,UUID actor,AnswerCreateRequest request) {
+        if(Boolean.TRUE.equals(request.anonymous()))throw new DomainException(403,"TANIDIK_REQUIRED","Anonim yanıt yalnız Tanıdıklar içindir.");
         var q=questions.lock(question);actor(actor);String text=body(request.body());
         var existing=answers.own(question,actor);
         if(existing.isPresent()) {

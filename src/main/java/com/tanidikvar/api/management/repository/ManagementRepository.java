@@ -30,7 +30,7 @@ public class ManagementRepository {
   ) c JOIN users u ON u.id=c.author_id
   LEFT JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL AND u.deleted_at IS NULL
   """;
- private static final String CONTENT_SELECT="SELECT c.*,CASE WHEN p.user_id IS NULL THEN NULL ELSE c.author_id END author_id,coalesce(nullif(concat_ws(' ',p.first_name,p.last_name),''),'Katılımcı') author_name,CASE WHEN qp.user_id IS NULL THEN NULL ELSE q.author_id END question_author_id,coalesce(nullif(concat_ws(' ',qp.first_name,qp.last_name),''),'Katılımcı') question_author_name,(SELECT count(*) FROM question_views v WHERE v.question_id=c.question_id AND v.deleted_at IS NULL) view_count,(SELECT count(*) FROM question_likes l WHERE l.question_id=c.question_id AND l.deleted_at IS NULL) like_count,(SELECT count(*) FROM answers a WHERE a.question_id=c.question_id AND a.answer_kind='COMMUNITY' AND a.deleted_at IS NULL AND a.moderated_at IS NULL) community_answer_count,(SELECT count(*) FROM answers a WHERE a.question_id=c.question_id AND a.answer_kind='ADMIN' AND a.deleted_at IS NULL AND a.moderated_at IS NULL) admin_answer_count "+CONTENT+" JOIN questions q ON q.id=c.question_id JOIN users qu ON qu.id=q.author_id LEFT JOIN user_profiles qp ON qp.user_id=qu.id AND qp.deleted_at IS NULL AND qu.deleted_at IS NULL ";
+ private static final String CONTENT_SELECT="SELECT c.*,CASE WHEN p.user_id IS NULL THEN NULL ELSE c.author_id END author_id,coalesce(nullif(concat_ws(' ',p.first_name,p.last_name),''),'Katılımcı') author_name,CASE WHEN qp.user_id IS NULL THEN NULL ELSE q.author_id END question_author_id,coalesce(nullif(concat_ws(' ',qp.first_name,qp.last_name),''),'Katılımcı') question_author_name,(SELECT count(*) FROM question_views v WHERE v.question_id=c.question_id AND v.deleted_at IS NULL) view_count,(SELECT count(*) FROM question_likes l WHERE l.question_id=c.question_id AND l.deleted_at IS NULL) like_count,(SELECT count(*) FROM answers a WHERE a.question_id=c.question_id AND a.answer_kind='COMMUNITY' AND a.deleted_at IS NULL AND a.moderated_at IS NULL) community_answer_count,(SELECT count(*) FROM answers a WHERE a.question_id=c.question_id AND a.answer_kind='TANIDIK' AND a.deleted_at IS NULL AND a.moderated_at IS NULL) admin_answer_count "+CONTENT+" JOIN questions q ON q.id=c.question_id JOIN users qu ON qu.id=q.author_id LEFT JOIN user_profiles qp ON qp.user_id=qu.id AND qp.deleted_at IS NULL AND qu.deleted_at IS NULL ";
  private ManagedContent content(ResultSet r,int n)throws SQLException{return new ManagedContent(r.getObject("id",UUID.class),r.getString("kind"),r.getObject("question_id",UUID.class),r.getObject("author_id",UUID.class),r.getString("title"),r.getString("body"),r.getString("author_name"),r.getObject("question_author_id",UUID.class),r.getString("question_author_name"),time(r,"created_at"),time(r,"deleted_at"),time(r,"moderated_at"),time(r,"archived_at"),r.getBoolean("question_hidden"),r.getLong("view_count"),r.getLong("like_count"),r.getLong("community_answer_count"),r.getLong("admin_answer_count"),r.getLong("version"));}
  public Optional<ManagedContent> content(UUID id,String kind){return jdbc.query(CONTENT_SELECT+"WHERE c.id=? AND c.kind=?",this::content,id,kind).stream().findFirst();}
  private String contentFilter(String status){return " WHERE c.kind=? AND position(search_fold(?) in search_fold(concat_ws(' ',c.title,c.body)))>0 AND (?::uuid IS NULL OR c.author_id=?::uuid) "+switch(status){case "ALL"->"";case "HIDDEN"->"AND c.moderated_at IS NOT NULL ";case "ARCHIVED"->"AND c.kind='QUESTION' AND c.archived_at IS NOT NULL AND c.moderated_at IS NULL ";default->"AND c.moderated_at IS NULL AND c.deleted_at IS NULL AND NOT c.question_hidden AND c.archived_at IS NULL ";};}
@@ -49,13 +49,13 @@ public class ManagementRepository {
   SELECT
    (SELECT count(*) FROM users WHERE deleted_at IS NULL) active_users,
    (SELECT count(*) FROM users WHERE deleted_at IS NOT NULL) disabled_users,
-   (SELECT count(*) FROM users WHERE deleted_at IS NULL AND authority='ADMIN') active_admins,
+   (SELECT count(*) FROM users WHERE deleted_at IS NULL AND authority='TANIDIK') active_admins,
    (SELECT count(*) FROM admin_applications a JOIN users u ON u.id=a.applicant_id AND u.deleted_at IS NULL WHERE a.deleted_at IS NULL AND a.status='PENDING') pending_applications,
    (SELECT count(*) FROM questions WHERE deleted_at IS NULL AND archived_at IS NULL) active_questions,
    (SELECT count(*) FROM questions WHERE deleted_at IS NULL AND archived_at IS NOT NULL) archived_questions,
    (SELECT count(*) FROM questions WHERE deleted_at IS NOT NULL) hidden_questions,
    (SELECT count(*) FROM answers a JOIN questions q ON q.id=a.question_id AND q.deleted_at IS NULL WHERE a.deleted_at IS NULL AND a.moderated_at IS NULL AND a.answer_kind='COMMUNITY') community_answers,
-   (SELECT count(*) FROM answers a JOIN questions q ON q.id=a.question_id AND q.deleted_at IS NULL WHERE a.deleted_at IS NULL AND a.moderated_at IS NULL AND a.answer_kind='ADMIN') admin_answers,
+   (SELECT count(*) FROM answers a JOIN questions q ON q.id=a.question_id AND q.deleted_at IS NULL WHERE a.deleted_at IS NULL AND a.moderated_at IS NULL AND a.answer_kind='TANIDIK') admin_answers,
    (SELECT count(*) FROM question_likes l JOIN questions q ON q.id=l.question_id AND q.deleted_at IS NULL WHERE l.deleted_at IS NULL) likes,
    (SELECT count(*) FROM question_views v JOIN questions q ON q.id=v.question_id AND q.deleted_at IS NULL WHERE v.deleted_at IS NULL) views
   """,(r,n)->new ManagementStats(r.getLong("active_users"),r.getLong("disabled_users"),r.getLong("active_admins"),r.getLong("pending_applications"),r.getLong("active_questions"),r.getLong("archived_questions"),r.getLong("hidden_questions"),r.getLong("community_answers"),r.getLong("admin_answers"),r.getLong("likes"),r.getLong("views")));}
@@ -67,7 +67,7 @@ public class ManagementRepository {
    events AS (
     SELECT (created_at AT TIME ZONE 'Europe/Istanbul')::date AS report_date,'users' metric,count(*) amount FROM users,bounds WHERE created_at>=start_at AND created_at<end_at GROUP BY 1
     UNION ALL SELECT (created_at AT TIME ZONE 'Europe/Istanbul')::date,'questions',count(*) FROM questions,bounds WHERE created_at>=start_at AND created_at<end_at GROUP BY 1
-    UNION ALL SELECT (published_at AT TIME ZONE 'Europe/Istanbul')::date,CASE answer_kind WHEN 'ADMIN' THEN 'admin_answers' ELSE 'community_answers' END,count(*) FROM answers,bounds WHERE published_at>=start_at AND published_at<end_at GROUP BY 1,2
+    UNION ALL SELECT (published_at AT TIME ZONE 'Europe/Istanbul')::date,CASE answer_kind WHEN 'TANIDIK' THEN 'admin_answers' ELSE 'community_answers' END,count(*) FROM answers,bounds WHERE published_at>=start_at AND published_at<end_at GROUP BY 1,2
     UNION ALL SELECT (viewed_at AT TIME ZONE 'Europe/Istanbul')::date,'views',count(*) FROM question_views,bounds WHERE viewed_at>=start_at AND viewed_at<end_at GROUP BY 1
     UNION ALL SELECT (first_liked_at AT TIME ZONE 'Europe/Istanbul')::date,'likes',count(*) FROM question_likes,bounds WHERE first_liked_at>=start_at AND first_liked_at<end_at GROUP BY 1
     UNION ALL SELECT (submitted_at AT TIME ZONE 'Europe/Istanbul')::date,'applications',count(*) FROM admin_applications,bounds WHERE submitted_at>=start_at AND submitted_at<end_at GROUP BY 1
@@ -92,7 +92,7 @@ public class ManagementRepository {
  SELECT p.first_name,p.last_name,p.university_id,un.name university_name,p.department_id,d.name department_name,p.graduation_year,f.id avatar_file_id,p.biography,p.occupation,p.company,p.linkedin_url,p.portfolio_url,u.active_verification_application_id,
  (SELECT count(*) FROM questions WHERE author_id=u.id) questions,
  (SELECT count(*) FROM answers WHERE author_id=u.id AND answer_kind='COMMUNITY') community_answers,
- (SELECT count(*) FROM answers WHERE author_id=u.id AND answer_kind='ADMIN') admin_answers
+ (SELECT count(*) FROM answers WHERE author_id=u.id AND answer_kind='TANIDIK') admin_answers
  FROM users u LEFT JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL
  LEFT JOIN stored_files f ON f.owner_id=u.id AND f.purpose='AVATAR' AND f.upload_status='READY' AND f.deleted_at IS NULL
  LEFT JOIN universities un ON un.id=p.university_id LEFT JOIN departments d ON d.id=p.department_id WHERE u.id=?

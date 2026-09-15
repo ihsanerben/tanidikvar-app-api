@@ -89,7 +89,7 @@ class AuthenticationIT {
         verify(email);
         var session = login(email);
         assertThat(access(session).isHttpOnly()).isTrue(); assertThat(refresh(session).isHttpOnly()).isTrue();
-        assertThat(refresh(session).getPath()).isEqualTo("/api/auth");
+        assertThat(refresh(session).getPath()).isEqualTo("/");
         assertThat(session.getResponse().getHeaders("Set-Cookie")).allMatch(value -> value.contains("SameSite=Lax"));
         mvc.perform(get("/api/me").cookie(access(session)))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.email").value(email))
@@ -179,8 +179,8 @@ class AuthenticationIT {
     @Test void currentAuthorityAndSoftDeletionOverrideExistingJwt() throws Exception {
         var original = account();
         UUID id = UUID.fromString(tokens.read(access(original).getValue(), "access").getSubject());
-        jdbc.update("UPDATE users SET authority='ADMIN' WHERE id=?", id);
-        mvc.perform(get("/api/me").cookie(access(original))).andExpect(jsonPath("$.role").value("ADMIN"));
+        jdbc.update("UPDATE users SET authority='TANIDIK' WHERE id=?", id);
+        mvc.perform(get("/api/me").cookie(access(original))).andExpect(jsonPath("$.role").value("TANIDIK"));
         jdbc.update("UPDATE users SET authority='MEMBER' WHERE id=?", id);
         mvc.perform(get("/api/me").cookie(access(original))).andExpect(jsonPath("$.role").value("USER"));
         jdbc.update("UPDATE users SET deleted_at=CURRENT_TIMESTAMP WHERE id=?", id);

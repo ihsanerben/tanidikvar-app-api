@@ -46,7 +46,7 @@ class AdminAnswerIT {
  UUID verification(Actor a,String education){
   UUID file=UUID.randomUUID(),v=UUID.randomUUID();jdbc.update("INSERT INTO stored_files(id,owner_id,purpose,storage_key,original_name,content_type,byte_size,upload_status) VALUES (?,?,'VERIFICATION',?,'belge.pdf','application/pdf',10,'READY')",file,a.id(),file.toString());
   jdbc.update("INSERT INTO admin_applications(id,applicant_id,request_id,submitted_first_name,submitted_last_name,education_status,university_department_id,university_name,department_name,graduation_year,document_file_id,document_sha256,profile_version,status,reviewed_by,reviewed_at) SELECT ?,p.user_id,?,'Ada','Yılmaz',?,p.university_department_id,'Doğrulanmış Üniversite','Bilgisayar',?,?,'test-hash',p.version,'APPROVED',p.user_id,clock_timestamp() FROM user_profiles p WHERE p.user_id=?",v,UUID.randomUUID(),education,education.equals("MEZUN")?2025:null,file,a.id());
-  jdbc.update("UPDATE users SET authority='ADMIN',active_verification_application_id=? WHERE id=?",v,a.id());return v;
+  jdbc.update("UPDATE users SET authority='TANIDIK',active_verification_application_id=? WHERE id=?",v,a.id());return v;
  }
  Actor admin(){var a=member();verification(a,"UNIVERSITE_OGRENCISI");return a;}
  String question(Actor ignored)throws Exception{var owner=member();return mapper.readTree(mvc.perform(write("POST","/api/questions",owner,Map.of("requestId",UUID.randomUUID(),"content",Map.of("title","Üniversite deneyimleri hakkında soru","scope","GENERAL","tagIds",List.of())))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();}
@@ -91,7 +91,7 @@ class AdminAnswerIT {
    gate.countDown();var statuses=new ArrayList<Integer>();for(var f:futures)statuses.add(f.get(20,TimeUnit.SECONDS));assertThat(statuses.stream().filter(s->s==201).count()).isEqualTo(5);assertThat(statuses.stream().filter(s->s==409).count()).isEqualTo(1);
   }
   mvc.perform(get("/api/me/admin-quota").cookie(a.cookie())).andExpect(jsonPath("$.used").value(5)).andExpect(jsonPath("$.remaining").value(0));
-  assertThat(jdbc.queryForObject("SELECT count(*) FROM answers WHERE author_id=? AND answer_kind='ADMIN'",Long.class,a.id())).isEqualTo(5);
+  assertThat(jdbc.queryForObject("SELECT count(*) FROM answers WHERE author_id=? AND answer_kind='TANIDIK'",Long.class,a.id())).isEqualTo(5);
  }
  @Test void duplicateFirstPublicationConsumesOneSlotAndDifferentAdminsCanReply()throws Exception{
   var a=admin();var b=admin();String q=question(a);assign(a,q,0);assign(b,q,0);var gate=new CountDownLatch(1);
@@ -156,7 +156,7 @@ class AdminAnswerIT {
  }
  @Test void databaseRejectsUnverifiedCrossOwnerReferencesAndPhysicalDeletion()throws Exception{
   var a=admin();var b=admin();String q=question(a);assign(a,q,0);var answer=publish(a,q);
-  assertThatThrownBy(()->jdbc.update("INSERT INTO answers(id,question_id,author_id,answer_kind,verification_application_id,body) VALUES (?,?,?,'ADMIN',?,'Geçersiz sahiplik denemesi')",UUID.randomUUID(),UUID.fromString(q),b.id(),verification(a))).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+  assertThatThrownBy(()->jdbc.update("INSERT INTO answers(id,question_id,author_id,answer_kind,verification_application_id,body) VALUES (?,?,?,'TANIDIK',?,'Geçersiz sahiplik denemesi')",UUID.randomUUID(),UUID.fromString(q),b.id(),verification(a))).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
   assertThatThrownBy(()->jdbc.update("UPDATE answers SET published_at=clock_timestamp() WHERE id=?",UUID.fromString(answer.get("id").asText()))).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
   assertThatThrownBy(()->jdbc.execute("DELETE FROM question_assignments")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
   assertThatThrownBy(()->jdbc.execute("TRUNCATE question_assignments")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);

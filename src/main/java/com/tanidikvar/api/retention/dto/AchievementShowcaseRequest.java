@@ -1,0 +1,1 @@
+package com.tanidikvar.api.retention.dto;import jakarta.validation.constraints.Size;import java.util.List;import java.util.UUID;public record AchievementShowcaseRequest(@Size(max=3) List<UUID> achievementIds) {}

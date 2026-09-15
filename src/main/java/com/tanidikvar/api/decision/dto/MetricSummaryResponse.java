@@ -1,0 +1,1 @@
+package com.tanidikvar.api.decision.dto;import java.math.BigDecimal;import java.time.Instant;public record MetricSummaryResponse(String metricKey,BigDecimal average,long sampleSize,long verifiedSampleSize,Instant updatedAt,boolean privacyThresholdMet){}

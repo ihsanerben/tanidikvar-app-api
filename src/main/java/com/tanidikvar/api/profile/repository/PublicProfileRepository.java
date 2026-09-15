@@ -8,7 +8,7 @@ public class PublicProfileRepository {
  private final JdbcTemplate jdbc;
  public PublicProfileRepository(JdbcTemplate jdbc){this.jdbc=jdbc;}
  public Optional<PublicProfile> find(UUID id){return jdbc.query("""
- SELECT u.id,concat_ws(' ',p.first_name,p.last_name) name,CASE WHEN u.authority='ADMIN' THEN 'ADMIN' ELSE p.education_status END role,
+ SELECT u.id,concat_ws(' ',p.first_name,p.last_name) name,CASE WHEN u.authority='TANIDIK' THEN 'TANIDIK' ELSE p.education_status END role,
  p.education_status,un.name university_name,d.name department_name,p.graduation_year,p.biography,p.occupation,p.company,p.linkedin_url,p.portfolio_url,f.id avatar_file_id,u.created_at
  FROM users u JOIN user_profiles p ON p.user_id=u.id AND p.deleted_at IS NULL
  LEFT JOIN universities un ON un.id=p.university_id LEFT JOIN departments d ON d.id=p.department_id

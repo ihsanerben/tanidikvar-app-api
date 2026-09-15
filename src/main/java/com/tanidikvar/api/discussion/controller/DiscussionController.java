@@ -1,0 +1,8 @@
+package com.tanidikvar.api.discussion.controller;
+import com.tanidikvar.api.auth.security.SessionPrincipal;import com.tanidikvar.api.common.dto.PageResponse;import com.tanidikvar.api.discussion.dto.*;import com.tanidikvar.api.discussion.service.DiscussionService;import jakarta.validation.Valid;import java.util.*;import org.springframework.http.*;import org.springframework.security.core.annotation.AuthenticationPrincipal;import org.springframework.web.bind.annotation.*;
+@RestController @RequestMapping("/api") public class DiscussionController{private final DiscussionService service;public DiscussionController(DiscussionService service){this.service=service;}
+ @GetMapping("/answers/{id}/comments") public PageResponse<AnswerCommentResponse> list(@PathVariable UUID id,@RequestParam(defaultValue="0")int page,@RequestParam(defaultValue="20")int size){return service.list(id,page,size);}
+ @PostMapping("/answers/{id}/comments") @ResponseStatus(HttpStatus.CREATED) public AnswerCommentResponse add(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal user,@Valid@RequestBody AnswerCommentRequest request){return service.add(id,user.userId(),request);}
+ @PutMapping("/questions/{id}/best-answer") @ResponseStatus(HttpStatus.NO_CONTENT) public void best(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal user,@Valid@RequestBody BestAnswerRequest request){service.best(id,user.userId(),request);}
+ @GetMapping("/question-templates") public List<QuestionTemplateResponse> templates(@RequestParam(required=false)String category){return service.templates(category);}
+}

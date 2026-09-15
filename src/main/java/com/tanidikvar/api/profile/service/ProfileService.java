@@ -8,6 +8,7 @@ import com.tanidikvar.api.profile.dto.*;
 import com.tanidikvar.api.profile.entity.*;
 import com.tanidikvar.api.profile.mapper.ProfileMapper;
 import com.tanidikvar.api.profile.repository.ProfileRepository;
+import com.tanidikvar.api.application.repository.ApplicationRepository;
 import java.time.*;
 import java.util.*;
 import org.springframework.stereotype.Service;
@@ -20,8 +21,9 @@ public class ProfileService {
     private final CatalogService catalog;
     private final AccountAccessService accounts;
     private final Clock clock;
-    public ProfileService(ProfileRepository profiles,ProfileMapper mapper,CatalogService catalog,AccountAccessService accounts,Clock clock) {
-        this.profiles=profiles; this.mapper=mapper; this.catalog=catalog; this.accounts=accounts; this.clock=clock;
+    private final ApplicationRepository applications;
+    public ProfileService(ProfileRepository profiles,ProfileMapper mapper,CatalogService catalog,AccountAccessService accounts,Clock clock,ApplicationRepository applications) {
+        this.profiles=profiles; this.mapper=mapper; this.catalog=catalog; this.accounts=accounts; this.clock=clock; this.applications=applications;
     }
     @Transactional(readOnly=true)
     public ProfileResponse get(UUID id) {
@@ -30,7 +32,8 @@ public class ProfileService {
     }
     @Transactional
     public ProfileResponse update(UUID id,ProfileRequest request) {
-        if(accounts.lockActive(id).getAuthority()==com.tanidikvar.api.auth.entity.Authority.MANAGER) throw new DomainException(403,"ACCESS_DENIED","Yönetim hesabı ayarlarını kullan.");
+        var account=accounts.lockActive(id);
+        if(account.getAuthority()==com.tanidikvar.api.auth.entity.Authority.MANAGER) throw new DomainException(403,"ACCESS_DENIED","Yönetim hesabı ayarlarını kullan.");
         var old=profiles.find(id).orElse(null);
         if(request.version()!=(old==null?0:old.version())) throw new DomainException(409,"STALE_VERSION","Profil başka bir ekranda değişmiş. Güncel bilgileri yükle.");
         var fields=new LinkedHashMap<String,String>();
@@ -44,12 +47,19 @@ public class ProfileService {
             int year=LocalDate.now(clock.withZone(ZoneId.of("Europe/Istanbul"))).getYear();
             if(request.graduationYear()==null || request.graduationYear()<1900 || request.graduationYear()>year) fields.put("graduationYear","Geçerli bir mezuniyet yılı yaz.");
         } else if(request.graduationYear()!=null) fields.put("graduationYear","Mezuniyet yılı yalnız mezunlar içindir.");
+        if(request.educationStatus()==EducationStatus.UNIVERSITE_OGRENCISI) {
+            if(request.classYear()!=null&&(request.classYear()<1||request.classYear()>8)) fields.put("classYear","Sınıf 1 ile 8 arasında olmalı.");
+        } else if(request.classYear()!=null) fields.put("classYear","Sınıf yalnız üniversite öğrencileri içindir.");
         String linkedin=profileUrl(request.linkedinUrl(),"linkedinUrl",true,fields),portfolio=profileUrl(request.portfolioUrl(),"portfolioUrl",false,fields);
         if(!fields.isEmpty()) throw new DomainException(400,"VALIDATION_FAILED","Profil alanlarını kontrol et.",fields);
         if(request.universityId()!=null)catalog.lockReference(CatalogKind.UNIVERSITY,request.universityId(),old==null||!Objects.equals(old.universityId(),request.universityId()));
         if(request.departmentId()!=null)catalog.lockReference(CatalogKind.DEPARTMENT,request.departmentId(),old==null||!Objects.equals(old.departmentId(),request.departmentId()));
-        profiles.save(new UserProfile(id,first,last,request.educationStatus(),request.universityId(),request.departmentId(),request.graduationYear(),
+        profiles.save(new UserProfile(id,first,last,request.educationStatus(),request.universityId(),request.departmentId(),request.classYear(),request.graduationYear(),
                 optional(request.biography()),optional(request.occupation()),optional(request.company()),linkedin,portfolio,null,request.version()),old!=null);
+        if(account.getAuthority()==com.tanidikvar.api.auth.entity.Authority.TANIDIK&&old!=null&&!Objects.equals(old.universityId(),request.universityId())){
+            account.revokeAdmin(clock.instant());
+            applications.insert(UUID.randomUUID(),id,UUID.randomUUID(),get(id),"Üniversite bilgisi değiştiği için Tanıdık statüsü yeniden doğrulanmalıdır.",null,null);
+        }
         return get(id);
     }
     private String profileUrl(String value,String field,boolean linkedin,Map<String,String> errors) {

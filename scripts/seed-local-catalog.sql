@@ -14,6 +14,23 @@ INSERT INTO universities (id, name, normalized_name) VALUES
     ('21af4207-a332-5499-84f7-fb13ffb0d223', 'Dokuz Eylül Üniversitesi', 'dokuz eylül üniversitesi')
 ON CONFLICT (normalized_name) DO NOTHING;
 
+UPDATE universities SET
+    institution_type='DEVLET',
+    city=CASE normalized_name
+        WHEN 'boğaziçi üniversitesi' THEN 'İstanbul'
+        WHEN 'orta doğu teknik üniversitesi' THEN 'Ankara'
+        WHEN 'istanbul teknik üniversitesi' THEN 'İstanbul'
+        WHEN 'hacettepe üniversitesi' THEN 'Ankara'
+        WHEN 'ankara üniversitesi' THEN 'Ankara'
+        WHEN 'istanbul üniversitesi' THEN 'İstanbul'
+        WHEN 'ege üniversitesi' THEN 'İzmir'
+        WHEN 'marmara üniversitesi' THEN 'İstanbul'
+        WHEN 'yıldız teknik üniversitesi' THEN 'İstanbul'
+        WHEN 'dokuz eylül üniversitesi' THEN 'İzmir'
+        ELSE city
+    END
+WHERE normalized_name IN ('boğaziçi üniversitesi','orta doğu teknik üniversitesi','istanbul teknik üniversitesi','hacettepe üniversitesi','ankara üniversitesi','istanbul üniversitesi','ege üniversitesi','marmara üniversitesi','yıldız teknik üniversitesi','dokuz eylül üniversitesi');
+
 INSERT INTO departments (id, name, normalized_name) VALUES
     ('357b081a-966a-595b-8f80-bf2bde0a7caa', 'Bilgisayar Mühendisliği', 'bilgisayar mühendisliği'),
     ('f67734b7-a88b-5b06-a0bb-e6ae7c05d421', 'Elektrik-Elektronik Mühendisliği', 'elektrik-elektronik mühendisliği'),

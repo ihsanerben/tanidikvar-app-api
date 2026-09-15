@@ -9,7 +9,7 @@ HTTPS sertifikasını alır ve istekleri API container'ına iletir.
 - Bölge: `eu-central-1` (Frankfurt)
 - EC2: Ubuntu 24.04 LTS, `t3a.small` (2 GB RAM) tercih edilir. `t3.micro`
   küçük pilot için çalışabilir fakat Java uygulaması için daha dar pay bırakır.
-- EBS: en az 20 GB `gp3`; API'nin isteğe bağlı avatar/PDF dosyaları bu diskte
+- EBS: en az 20 GB `gp3`; PostgreSQL verisi ve geçmiş medya uyumluluk alanı bu diskte
   `deploy/aws/data` altında kalır.
 - Elastic IP: DNS kaydının sabit bir IP'ye işaret etmesi için.
 - Güvenlik grubu: internetten yalnız `80/tcp` ve `443/tcp`; yönetim için SSH

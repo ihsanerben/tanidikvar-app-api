@@ -68,7 +68,7 @@ class QuestionIT {
     Map<String,Object> content(String title) {var c=new HashMap<String,Object>();c.put("title",title);c.put("scope","GENERAL");c.put("tagIds",List.of());return c;}
     JsonNode question(Actor a,Map<String,Object> c)throws Exception {return mapper.readTree(mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
     @Test void publicReadingProfileGateCsrfAndOwnership()throws Exception {
-        var incomplete=actor("MEMBER");var owner=member("MEMBER");var admin=member("ADMIN");var manager=member("MEMBER");
+        var incomplete=actor("MEMBER");var owner=member("MEMBER");var admin=member("TANIDIK");var manager=member("MEMBER");
         var c=content("Üniversitede kampüs hayatı nasıl?");var body=Map.of("requestId",UUID.randomUUID(),"content",c);
         mvc.perform(post("/api/questions").with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body))).andExpect(status().isUnauthorized());
         mvc.perform(write("POST","/api/questions",incomplete,body)).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("PROFILE_REQUIRED"));

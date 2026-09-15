@@ -21,10 +21,10 @@ public class AuthCookies {
     }
     public void write(HttpServletResponse response, IssuedSession session) {
         set(response, ACCESS, session.accessToken(), "/", Duration.between(clock.instant(), session.accessExpiresAt()));
-        set(response, REFRESH, session.refreshToken(), "/api/auth", Duration.between(clock.instant(), session.refreshExpiresAt()));
+        set(response, REFRESH, session.refreshToken(), "/", Duration.between(clock.instant(), session.refreshExpiresAt()));
     }
     public void clear(HttpServletResponse response) {
-        set(response, ACCESS, "", "/", Duration.ZERO); set(response, REFRESH, "", "/api/auth", Duration.ZERO);
+        set(response, ACCESS, "", "/", Duration.ZERO); set(response, REFRESH, "", "/", Duration.ZERO);
     }
     private void set(HttpServletResponse response, String name, String value, String path, Duration age) {
         response.addHeader(HttpHeaders.SET_COOKIE, ResponseCookie.from(name, value).httpOnly(true).secure(secure)

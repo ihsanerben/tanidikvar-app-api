@@ -1,0 +1,1 @@
+package com.tanidikvar.api.retention.dto;import java.time.Instant;import java.util.UUID;public record AchievementResponse(UUID id,String key,String title,Integer periodYear,String scopeType,UUID scopeId,Instant awardedAt,boolean featured) {}

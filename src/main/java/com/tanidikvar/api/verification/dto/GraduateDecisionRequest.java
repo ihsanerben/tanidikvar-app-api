@@ -1,0 +1,1 @@
+package com.tanidikvar.api.verification.dto;import jakarta.validation.constraints.*;public record GraduateDecisionRequest(@NotBlank@Pattern(regexp="APPROVED|REJECTED")String status,@Size(max=1000)String reason,@PositiveOrZero long version){}

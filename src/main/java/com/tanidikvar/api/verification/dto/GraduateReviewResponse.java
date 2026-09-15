@@ -1,0 +1,1 @@
+package com.tanidikvar.api.verification.dto;import java.time.Instant;import java.util.UUID;public record GraduateReviewResponse(UUID id,UUID userId,String applicantName,String evidence,String status,String reason,Instant createdAt,long version){}

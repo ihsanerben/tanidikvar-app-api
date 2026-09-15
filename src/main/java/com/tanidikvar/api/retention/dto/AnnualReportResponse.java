@@ -1,0 +1,1 @@
+package com.tanidikvar.api.retention.dto;public record AnnualReportResponse(int year,long points,long pointEvents,long answers,long bestAnswers,long usefulVotes,long evaluations,long experiences,double percentile){}

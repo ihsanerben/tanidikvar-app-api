@@ -1,0 +1,11 @@
+package com.tanidikvar.api.decision.controller;
+import com.tanidikvar.api.auth.security.SessionPrincipal;import com.tanidikvar.api.common.dto.PageResponse;import com.tanidikvar.api.decision.dto.*;import com.tanidikvar.api.decision.service.DecisionContributionService;import jakarta.validation.Valid;import java.util.*;import org.springframework.http.*;import org.springframework.security.core.annotation.AuthenticationPrincipal;import org.springframework.web.bind.annotation.*;
+@RestController @RequestMapping("/api") public class DecisionContributionController{private final DecisionContributionService service;public DecisionContributionController(DecisionContributionService service){this.service=service;}
+ @PutMapping("/context-metrics") @ResponseStatus(HttpStatus.NO_CONTENT) public void metric(@AuthenticationPrincipal SessionPrincipal user,@Valid @RequestBody MetricContributionRequest request){service.metric(user.userId(),request);}
+ @GetMapping("/context-metrics") public List<MetricSummaryResponse> metrics(@RequestParam UUID universityId,@RequestParam(required=false) UUID programId){return service.metrics(universityId,programId);}
+ @PostMapping("/experiences") @ResponseStatus(HttpStatus.CREATED) public ExperienceResponse experience(@AuthenticationPrincipal SessionPrincipal user,@Valid @RequestBody ExperienceRequest request){return service.experience(user.userId(),request);}
+ @GetMapping("/experiences") public PageResponse<ExperienceResponse> experiences(@RequestParam UUID universityId,@RequestParam(required=false) UUID programId,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return service.experiences(universityId,programId,page,size);}
+ @PutMapping("/career-outcomes") @ResponseStatus(HttpStatus.NO_CONTENT) public void career(@AuthenticationPrincipal SessionPrincipal user,@Valid @RequestBody GraduateOutcomeRequest request){service.career(user.userId(),request);}
+ @GetMapping("/career-outcomes") public CareerSummaryResponse career(@RequestParam UUID universityId,@RequestParam UUID programId){return service.career(universityId,programId);}
+ @GetMapping("/experience-sentiments") public SentimentSummaryResponse sentiments(@RequestParam UUID universityId,@RequestParam(required=false) UUID programId){return service.sentiments(universityId,programId);}
+}

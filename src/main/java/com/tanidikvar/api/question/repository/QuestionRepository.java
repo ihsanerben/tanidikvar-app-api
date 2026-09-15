@@ -17,14 +17,14 @@ public class QuestionRepository {
         LEFT JOIN universities u ON u.id=q.university_id
         LEFT JOIN departments d ON d.id=q.department_id
         """;
-    private static final String SELECT="SELECT q.*,concat_ws(' ',p.first_name,p.last_name) author_name,u.name university_name,d.name department_name,f.id avatar_file_id,p.education_status,(a.authority='ADMIN' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=a.active_verification_application_id AND v.applicant_id=a.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin "+FROM;
+    private static final String SELECT="SELECT q.*,concat_ws(' ',p.first_name,p.last_name) author_name,u.name university_name,d.name department_name,f.id avatar_file_id,p.education_status,(a.authority='TANIDIK' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=a.active_verification_application_id AND v.applicant_id=a.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin "+FROM;
     private Instant time(ResultSet r,String key)throws SQLException { var t=r.getTimestamp(key);return t==null?null:t.toInstant(); }
     private Question map(ResultSet r,int n)throws SQLException {
         String name=r.getString("author_name");
         return new Question(r.getObject("id",UUID.class),r.getObject("author_id",UUID.class),r.getString("title"),r.getString("body"),
                 QuestionScope.valueOf(r.getString("scope")),r.getObject("university_id",UUID.class),r.getObject("department_id",UUID.class),
                 time(r,"created_at"),time(r,"edited_at"),time(r,"archived_at"),time(r,"deleted_at"),r.getLong("version"),
-                name==null||name.isBlank()?null:name,r.getString("university_name"),r.getString("department_name"),r.getObject("avatar_file_id",UUID.class),r.getString("education_status"),r.getBoolean("active_admin"));
+                name==null||name.isBlank()?null:name,r.getString("university_name"),r.getString("department_name"),r.getObject("avatar_file_id",UUID.class),r.getString("education_status"),r.getBoolean("active_admin"),r.getObject("best_answer_id",UUID.class));
     }
     public Optional<Question> find(UUID id,boolean lock) {
         return jdbc.query(SELECT+" WHERE q.id=:id AND q.deleted_at IS NULL"+(lock?" FOR UPDATE OF q":""),Map.of("id",id),this::map).stream().findFirst();
@@ -69,10 +69,23 @@ public class QuestionRepository {
         if(p.containsKey("university"))sql+=" AND u.id=:university";
         if(p.containsKey("tag"))sql+=" AND EXISTS (SELECT 1 FROM question_tags qt JOIN tags t ON t.id=qt.tag_id AND t.deleted_at IS NULL WHERE qt.question_id=q.id AND qt.tag_id=:tag AND qt.deleted_at IS NULL)";
         if(p.containsKey("department"))sql+=" AND q.department_id=:department";
+        if(p.containsKey("city"))sql+=" AND u.deleted_at IS NULL AND strpos(search_fold(coalesce(u.city,'')),search_fold(:city))>0";
+        if(p.containsKey("answered"))sql+=Boolean.TRUE.equals(p.get("answered"))
+            ?" AND EXISTS (SELECT 1 FROM answers qa WHERE qa.question_id=q.id AND qa.deleted_at IS NULL AND qa.moderated_at IS NULL)"
+            :" AND NOT EXISTS (SELECT 1 FROM answers qa WHERE qa.question_id=q.id AND qa.deleted_at IS NULL AND qa.moderated_at IS NULL)";
+        if(p.containsKey("verifiedAnswer")) {
+            String verified="""
+                EXISTS (SELECT 1 FROM answers va JOIN users vu ON vu.id=va.author_id AND vu.deleted_at IS NULL
+                  WHERE va.question_id=q.id AND va.deleted_at IS NULL AND va.moderated_at IS NULL AND
+                  (EXISTS (SELECT 1 FROM education_verifications ev WHERE ev.user_id=vu.id AND ev.verified_at IS NOT NULL AND ev.deleted_at IS NULL)
+                   OR EXISTS (SELECT 1 FROM admin_applications av WHERE av.applicant_id=vu.id AND av.status='APPROVED' AND av.deleted_at IS NULL)))
+                """;
+            sql+=Boolean.TRUE.equals(p.get("verifiedAnswer"))?" AND "+verified:" AND NOT "+verified;
+        }
         if(p.containsKey("admin"))sql+=" "+"""
             AND EXISTS (SELECT 1 FROM answers aa JOIN users au ON au.id=aa.author_id AND au.deleted_at IS NULL
               JOIN user_profiles ap ON ap.user_id=au.id AND ap.deleted_at IS NULL
-              WHERE aa.question_id=q.id AND aa.author_id=:admin AND aa.answer_kind='ADMIN' AND aa.deleted_at IS NULL AND aa.moderated_at IS NULL
+              WHERE aa.question_id=q.id AND aa.author_id=:admin AND aa.answer_kind='TANIDIK' AND aa.deleted_at IS NULL AND aa.moderated_at IS NULL
               AND EXISTS (SELECT 1 FROM admin_applications av WHERE av.applicant_id=au.id AND av.status='APPROVED' AND av.deleted_at IS NULL))
             """;
         if(p.containsKey("query"))sql+=" "+"""
@@ -99,7 +112,7 @@ public class QuestionRepository {
                 SELECT l.question_id,l.first_liked_at,:likeWeight FROM question_likes l JOIN eligible e ON e.id=l.question_id
                   WHERE l.deleted_at IS NULL AND l.first_liked_at>=:since AND l.first_liked_at<:until
                 UNION ALL
-                SELECT a.question_id,a.published_at,CASE WHEN a.answer_kind='ADMIN' THEN :adminWeight ELSE :communityWeight END
+                SELECT a.question_id,a.published_at,CASE WHEN a.answer_kind='TANIDIK' THEN :adminWeight ELSE :communityWeight END
                   FROM answers a JOIN eligible e ON e.id=a.question_id
                   WHERE a.deleted_at IS NULL AND a.moderated_at IS NULL AND a.published_at>=:since AND a.published_at<:until
             ), scores AS (

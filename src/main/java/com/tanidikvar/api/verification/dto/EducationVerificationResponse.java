@@ -1,0 +1,1 @@
+package com.tanidikvar.api.verification.dto;import java.time.Instant;public record EducationVerificationResponse(boolean verified,String type,String maskedEmail,Instant verifiedAt,Instant expiresAt){}

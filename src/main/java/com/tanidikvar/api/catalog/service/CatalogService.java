@@ -32,13 +32,33 @@ public class CatalogService {
         page(page,size); String search=CatalogNames.search(query);
         return new PageResponse<>(catalog.list(kind,search,includeDeleted,page,size).stream().map(mapper::toResponse).toList(),page,size,catalog.count(kind,search,includeDeleted));
     }
+    @Transactional(readOnly=true) public PageResponse<UniversityResponse> universities(String query,String city,String institutionType,int page,int size){page(page,size);String search=CatalogNames.search(query),citySearch=CatalogNames.search(city),type=institutionType==null?"":institutionType.strip().toUpperCase();if(!type.isEmpty()&&!java.util.Set.of("DEVLET","VAKIF").contains(type))throw new DomainException(400,"INVALID_REQUEST","Kurum türünü kontrol et.");return new PageResponse<>(catalog.universities(search,citySearch,type,page,size),page,size,catalog.universityCount(search,citySearch,type));}
+    @Transactional(readOnly=true) public UniversityResponse university(UUID id){var value=catalog.university(id,false).orElseThrow(this::missing);if(value.deletedAt()!=null)throw missing();return value;}
+    @Transactional public UniversityResponse universityDetails(UUID actor,UUID id,UniversityDetailsRequest request){manager(actor);reason(request.reason());var current=catalog.university(id,true).orElseThrow(this::missing);checkVersion(current.version(),request.version());catalog.universityDetails(id,request);catalog.audit(actor,"UPDATE_DETAILS","UNIVERSITY",id,request.reason().strip());return catalog.university(id,false).orElseThrow(this::missing);}
     @Transactional(readOnly=true)
     public PageResponse<EducationResponse> educationList(UUID university,String query,boolean includeDeleted,int page,int size) {
         page(page,size); String search=CatalogNames.search(query);
         return new PageResponse<>(catalog.educationList(university,search,includeDeleted,page,size),page,size,catalog.educationCount(university,search,includeDeleted));
     }
     @Transactional(readOnly=true)
+    public PageResponse<EducationResponse> publicPrograms(String query,int page,int size) {
+        page(page,size);String search=CatalogNames.search(query);
+        return new PageResponse<>(catalog.publicProgramList(search,page,size),page,size,catalog.publicProgramCount(search));
+    }
+    @Transactional(readOnly=true)
     public EducationResponse education(UUID id) { return catalog.education(id).orElseThrow(this::missing); }
+    @Transactional(readOnly=true)
+    public CatalogResponse publicEntry(CatalogKind kind,UUID id) {
+        var entry=catalog.find(kind,id).orElseThrow(this::missing);
+        if(entry.deletedAt()!=null) throw missing();
+        return mapper.toResponse(entry);
+    }
+    @Transactional(readOnly=true)
+    public EducationResponse publicEducation(UUID universityId,UUID departmentId) {
+        var education=catalog.findEducation(universityId,departmentId).orElseThrow(this::missing);
+        if(!education.available()) throw missing();
+        return education;
+    }
     @Transactional(readOnly=true)
     public EducationResponse selection(UUID universityId,UUID departmentId) {
         var university=catalog.find(CatalogKind.UNIVERSITY,universityId).orElseThrow(this::missing);

@@ -46,7 +46,7 @@ class ApplicationIT {
  JsonNode legacyPending(Actor a)throws Exception{
   String verification=active(a);
   jdbc.update("UPDATE users SET authority='MEMBER',active_verification_application_id=NULL WHERE id=?",a.id());
-  try{return submit(a);}finally{jdbc.update("UPDATE users SET authority='ADMIN',active_verification_application_id=? WHERE id=?",UUID.fromString(verification),a.id());}
+  try{return submit(a);}finally{jdbc.update("UPDATE users SET authority='TANIDIK',active_verification_application_id=? WHERE id=?",UUID.fromString(verification),a.id());}
  }
  @Test void approvedAdminSeesHistoryButCannotSubmitAgain()throws Exception{
   var a=student();var m=actor("MANAGER");var approved=submit(a);approve(m,approved);
@@ -57,13 +57,13 @@ class ApplicationIT {
   var a=student();var m=actor("MANAGER");UUID request=UUID.randomUUID();
   var application=mapper.readTree(mvc.perform(submitRequest(a,request,1)).andExpect(status().isCreated()).andExpect(jsonPath("$.documentFileId").doesNotExist()).andReturn().getResponse().getContentAsString());
   approve(m,application);
-  assertThat(role(a)).isEqualTo("ADMIN");assertThat(active(a)).isEqualTo(application.get("id").asText());
+  assertThat(role(a)).isEqualTo("TANIDIK");assertThat(active(a)).isEqualTo(application.get("id").asText());
   assertThat(jdbc.queryForObject("SELECT count(*) FROM stored_files WHERE owner_id=? AND purpose='VERIFICATION'",Long.class,a.id())).isZero();
  }
  @Test void yksCandidateCanSubmitAndBeApprovedWithoutUniversitySnapshot()throws Exception{
   var a=candidate();var m=actor("MANAGER");var application=submit(a);
   assertThat(application.get("educationStatus").asString()).isEqualTo("YKS_ADAYI");assertThat(application.get("universityName").isNull()).isTrue();assertThat(application.get("departmentName").isNull()).isTrue();
-  approve(m,application);assertThat(role(a)).isEqualTo("ADMIN");assertThat(active(a)).isEqualTo(application.get("id").asText());
+  approve(m,application);assertThat(role(a)).isEqualTo("TANIDIK");assertThat(active(a)).isEqualTo(application.get("id").asText());
  }
  String decision(JsonNode a){return "/api/manager/admin-applications/"+a.get("id").asText()+"/decision";}
  void approve(Actor m,JsonNode a)throws Exception{mvc.perform(write(decision(a),m,Map.of("status","APPROVED","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.activeVerification").value(true));}
@@ -76,8 +76,8 @@ class ApplicationIT {
   mvc.perform(get("/api/me/admin-applications").cookie(a.cookie())).andExpect(jsonPath("$.items[0].firstName").value("Ada")).andExpect(jsonPath("$.items[0].universityName").value(app.get("universityName").asText())).andExpect(jsonPath("$.items[0].documentSha256").doesNotExist());
   mvc.perform(get("/api/me/admin-applications").cookie(other.cookie())).andExpect(jsonPath("$.totalElements").value(0));
   mvc.perform(get("/api/manager/admin-applications").cookie(other.cookie())).andExpect(status().isForbidden());
-  approve(m,app);assertThat(role(a)).isEqualTo("ADMIN");assertThat(active(a)).isEqualTo(app.get("id").asText());
-  mvc.perform(get("/api/me").cookie(a.cookie())).andExpect(jsonPath("$.role").value("ADMIN"));
+  approve(m,app);assertThat(role(a)).isEqualTo("TANIDIK");assertThat(active(a)).isEqualTo(app.get("id").asText());
+  mvc.perform(get("/api/me").cookie(a.cookie())).andExpect(jsonPath("$.role").value("TANIDIK"));
  }
  @Test void eligibilityCsrfAndValidation()throws Exception{
   var a=student();var m=actor("MANAGER");
@@ -103,7 +103,7 @@ class ApplicationIT {
   assertThat(role(a)).isEqualTo("MEMBER");
   var approved=submit(a);approve(m,approved);
   var second=legacyPending(a);mvc.perform(write(decision(second),m,Map.of("status","REJECTED","version",0,"reason","Yeni belge uygun değil."))).andExpect(status().isOk());
-  assertThat(role(a)).isEqualTo("ADMIN");assertThat(active(a)).isEqualTo(approved.get("id").asText());
+  assertThat(role(a)).isEqualTo("TANIDIK");assertThat(active(a)).isEqualTo(approved.get("id").asText());
   var third=legacyPending(a);approve(m,third);assertThat(active(a)).isEqualTo(third.get("id").asText());
   mvc.perform(write(decision(first),m,Map.of("status","APPROVED","version",1))).andExpect(status().isConflict());
  }
@@ -135,7 +135,7 @@ class ApplicationIT {
    var right=pool.submit(()->{gate.await();return mvc.perform(write(decision(app),n,Map.of("status","REJECTED","reason","Uygun değil.","version",0))).andReturn().getResponse().getStatus();});gate.countDown();
    assertThat(List.of(left.get(15,TimeUnit.SECONDS),right.get(15,TimeUnit.SECONDS))).containsExactlyInAnyOrder(200,409);
   }
-  String state=jdbc.queryForObject("SELECT status FROM admin_applications WHERE id=?",String.class,UUID.fromString(app.get("id").asText()));assertThat(role(a)).isEqualTo(state.equals("APPROVED")?"ADMIN":"MEMBER");
+  String state=jdbc.queryForObject("SELECT status FROM admin_applications WHERE id=?",String.class,UUID.fromString(app.get("id").asText()));assertThat(role(a)).isEqualTo(state.equals("APPROVED")?"TANIDIK":"MEMBER");
  }
  @Test void decisionRollbackDoesNotGrantPartialAuthority()throws Exception{
   var a=student();var m=actor("MANAGER");var app=submit(a);String id=app.get("id").asText();
@@ -160,7 +160,7 @@ class ApplicationIT {
   jdbc.execute("CREATE TRIGGER fail_revoke_audit BEFORE INSERT ON management_actions FOR EACH ROW EXECUTE FUNCTION fail_revoke_audit()");
   try{
    mvc.perform(post("/api/manager/users/"+a.id()+"/revoke-admin").cookie(m.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(Map.of("verificationId",first.get("id").asText(),"reason","Kontrol")))).andExpect(status().isServiceUnavailable());
-   assertThat(role(a)).isEqualTo("ADMIN");assertThat(active(a)).isEqualTo(first.get("id").asText());
+   assertThat(role(a)).isEqualTo("TANIDIK");assertThat(active(a)).isEqualTo(first.get("id").asText());
    assertThat(jdbc.queryForObject("SELECT status FROM admin_applications WHERE id=?",String.class,UUID.fromString(pending.get("id").asText()))).isEqualTo("PENDING");
   }finally{jdbc.execute("DROP TRIGGER fail_revoke_audit ON management_actions");jdbc.execute("DROP FUNCTION fail_revoke_audit()");}
  }
