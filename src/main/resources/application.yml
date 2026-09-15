@@ -42,6 +42,10 @@ server:
 app:
   pilot-mode: ${PILOT_MODE:false}
   storage-directory: ${STORAGE_DIRECTORY:.local/storage}
+  catalog:
+    programs-csv-url: ${PROGRAMS_CSV_URL:https://raw.githubusercontent.com/cngil/turkiye-university-programs/main/data/programs.csv}
+    programs-csv-max-bytes: ${PROGRAMS_CSV_MAX_BYTES:104857600}
+    programs-csv-timeout: ${PROGRAMS_CSV_TIMEOUT:120s}
   auth:
     secret: ${JWT_SECRET}
     access-ttl: ${JWT_ACCESS_TTL:15m}

@@ -12,4 +12,6 @@ public class ProfileSummaryService {
     public EducationStatus status(UUID id) { return profiles.find(id).filter(p -> p.deletedAt()==null).map(p -> p.educationStatus()).orElse(null); }
     @Transactional(readOnly=true)
     public boolean completed(UUID id) { return status(id)!=null; }
+    @Transactional(readOnly=true)
+    public UUID universityId(UUID id) { return profiles.find(id).filter(p->p.deletedAt()==null).map(p->p.universityId()).orElse(null); }
 }

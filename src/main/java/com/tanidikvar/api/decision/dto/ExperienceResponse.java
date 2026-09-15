@@ -1,0 +1,1 @@
+package com.tanidikvar.api.decision.dto;import java.time.Instant;import java.util.UUID;public record ExperienceResponse(UUID id,UUID authorId,String authorName,String templateType,String title,String body,String sentiment,Instant createdAt,long version){}

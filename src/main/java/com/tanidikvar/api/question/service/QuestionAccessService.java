@@ -11,7 +11,7 @@ public class QuestionAccessService {
     public QuestionAccessService(QuestionRepository questions) { this.questions=questions; }
     private QuestionState state(UUID id,boolean lock) {
         var q=questions.find(id,lock).orElseThrow(()->new DomainException(404,"NOT_FOUND","Soru bulunamadı."));
-        return new QuestionState(q.id(),q.archivedAt());
+        return new QuestionState(q.id(),q.universityId(),q.archivedAt());
     }
     @Transactional(readOnly=true)
     public QuestionState requireReadable(UUID id) { return state(id,false); }

@@ -1,0 +1,1 @@
+package com.tanidikvar.api.catalog.dto;import java.time.Instant;import java.util.UUID;public record UniversityResponse(UUID id,String name,String city,String institutionType,String description,String websiteUrl,String logoUrl,String accentPrimary,String accentSoft,String accentForeground,Instant deletedAt,long version) {}

@@ -1,0 +1,1 @@
+package com.tanidikvar.api.retention.dto;import jakarta.validation.constraints.*;public record NotificationPreferenceRequest(boolean inAppEnabled,boolean emailEnabled,@NotBlank@Pattern(regexp="IMMEDIATE|DAILY|WEEKLY|NEVER")String emailFrequency,boolean questionRoutingEnabled,long version){}

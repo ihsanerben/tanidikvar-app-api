@@ -29,11 +29,11 @@ class ManagementIT {
  Actor actor(String role){UUID id=UUID.randomUUID();String email=id+"@example.test";jdbc.update("INSERT INTO users(id,email,password_hash,authority,email_verified_at,created_at,updated_at) VALUES (?,?,?,?,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",id,email,passwords.encode("Testing-password!"),role);return new Actor(id,email,new Cookie("TV_ACCESS",auth.login(email,"Testing-password!").accessToken()));}
  void profile(Actor a){TestAvatar.ready(jdbc,a.id());jdbc.update("INSERT INTO user_profiles(user_id,first_name,last_name,education_status) VALUES (?,'Ada','Yılmaz','YKS_ADAYI')",a.id());}
  UUID question(Actor a){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO questions(id,author_id,request_id,title,scope) VALUES (?,?,?,?,'GENERAL')",id,a.id(),UUID.randomUUID(),"Yönetim sorusu "+id);return id;}
- UUID answer(Actor a,UUID q,UUID verification){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO answers(id,question_id,author_id,answer_kind,verification_application_id,body,published_at) VALUES (?,?,?,?,?,'Korunacak gerçek deneyim metni',clock_timestamp()-interval '1 second')",id,q,a.id(),verification==null?"COMMUNITY":"ADMIN",verification);return id;}
+ UUID answer(Actor a,UUID q,UUID verification){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO answers(id,question_id,author_id,answer_kind,verification_application_id,body,published_at) VALUES (?,?,?,?,?,'Korunacak gerçek deneyim metni',clock_timestamp()-interval '1 second')",id,q,a.id(),verification==null?"COMMUNITY":"TANIDIK",verification);return id;}
  UUID application(Actor a,Actor manager,boolean approved){UUID uni=UUID.randomUUID(),dep=UUID.randomUUID(),edu=UUID.randomUUID(),file=UUID.randomUUID(),v=UUID.randomUUID();jdbc.update("INSERT INTO universities(id,name,normalized_name) VALUES (?,?,?)",uni,"Test Üniversitesi",uni.toString());jdbc.update("INSERT INTO departments(id,name,normalized_name) VALUES (?,?,?)",dep,"Test Bölümü",dep.toString());jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)",edu,uni,dep);
   jdbc.update("INSERT INTO stored_files(id,owner_id,purpose,storage_key,original_name,content_type,byte_size,upload_status) VALUES (?,?,'VERIFICATION',?,'test.pdf','application/pdf',10,'READY')",file,a.id(),file.toString());
   jdbc.update("INSERT INTO admin_applications(id,applicant_id,request_id,submitted_first_name,submitted_last_name,education_status,university_department_id,university_name,department_name,document_file_id,document_sha256,profile_version,status,reviewed_by,reviewed_at) VALUES (?,?,?,'Ada','Yılmaz','UNIVERSITE_OGRENCISI',?,'Test Üniversitesi','Test Bölümü',?,'test-hash',0,?,?,CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END)",v,a.id(),UUID.randomUUID(),edu,file,approved?"APPROVED":"PENDING",approved?manager.id():null,approved);
-  if(approved)jdbc.update("UPDATE users SET authority='ADMIN',active_verification_application_id=? WHERE id=?",v,a.id());return v;
+  if(approved)jdbc.update("UPDATE users SET authority='TANIDIK',active_verification_application_id=? WHERE id=?",v,a.id());return v;
  }
  MockHttpServletRequestBuilder write(String method,String path,Actor a,Object body){return (method.equals("PUT")?put(path):post(path)).cookie(a.cookie()).with(csrf()).contentType("application/json").content(mapper.writeValueAsString(body));}
  Map<String,Object> change(boolean hidden,long version){return Map.of("hidden",hidden,"version",version,"reason","İnceleme sonucu verilen test kararı");}
@@ -43,7 +43,7 @@ class ManagementIT {
  long version(Actor a){return jdbc.queryForObject("SELECT version FROM users WHERE id=?",Long.class,a.id());}
  JsonNode read(String path,Actor a)throws Exception{return mapper.readTree(mvc.perform(get(path).cookie(a.cookie())).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());}
  @Test void managerOnlyReadsWritesCsrfValidationAndProtectedAccounts()throws Exception{
-  var m=actor("MANAGER");var member=actor("MEMBER");var admin=actor("ADMIN");UUID q=question(member);
+  var m=actor("MANAGER");var member=actor("MEMBER");var admin=actor("TANIDIK");UUID q=question(member);
   for(String path:List.of("/api/manager/statistics","/api/manager/users","/api/manager/content","/api/manager/actions")){
    mvc.perform(get(path)).andExpect(status().isUnauthorized());mvc.perform(get(path).cookie(member.cookie())).andExpect(status().isForbidden());mvc.perform(get(path).cookie(admin.cookie())).andExpect(status().isForbidden());mvc.perform(get(path).cookie(m.cookie())).andExpect(status().isOk());
   }
@@ -117,7 +117,7 @@ class ManagementIT {
  @Test void adminModerationUpdatesCountsHistoryFiltersAndPopularityWithoutRefundingQuota()throws Exception{
   var m=actor("MANAGER");var a=actor("MEMBER");profile(a);UUID v=application(a,m,true),q=question(a),id=answer(a,q,v);
   mvc.perform(get("/api/me/admin-quota").cookie(a.cookie())).andExpect(jsonPath("$.used").value(1));
-  moderate(m,id,"ADMIN",true,0).andExpect(status().isOk());
+  moderate(m,id,"TANIDIK",true,0).andExpect(status().isOk());
   mvc.perform(get("/api/questions/"+q+"/admin-answers")).andExpect(jsonPath("$.totalElements").value(0));
   mvc.perform(get("/api/admins/"+a.id())).andExpect(jsonPath("$.answerCount").value(0));
   mvc.perform(get("/api/questions").param("adminId",a.id().toString())).andExpect(jsonPath("$.totalElements").value(0));
@@ -126,7 +126,7 @@ class ManagementIT {
   mvc.perform(get("/api/me/admin-quota").cookie(a.cookie())).andExpect(jsonPath("$.used").value(1));
   mvc.perform(write("PUT","/api/admin-answers/"+id,a,Map.of("body","Düzenleme denemesi yeni metin","version",1))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ANSWER_MODERATED"));
   mvc.perform(write("PUT","/api/admin-answers/"+id+"/status",a,Map.of("deleted",false,"version",1))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ANSWER_MODERATED"));
-  moderate(m,id,"ADMIN",false,1).andExpect(status().isOk());
+  moderate(m,id,"TANIDIK",false,1).andExpect(status().isOk());
   mvc.perform(get("/api/questions/"+q+"/admin-answers")).andExpect(jsonPath("$.totalElements").value(1));
   mvc.perform(get("/api/popular").param("q",q.toString())).andExpect(jsonPath("$.totalElements").value(1));
  }
@@ -196,7 +196,7 @@ class ManagementIT {
   for(String endpoint:List.of("/api/questions","/api/questions/"+q+"/answers","/api/questions/"+q+"/admin-answers","/api/me/admin-applications"))
    mvc.perform(write("POST",endpoint,m,Map.of())).andExpect(status().isForbidden());
   for(String endpoint:List.of("/api/questions/"+q+"/like","/api/questions/"+q+"/assignment"))mvc.perform(write("PUT",endpoint,m,Map.of())).andExpect(status().isForbidden());
-  assertThatThrownBy(()->answerService.create(q,m.id(),new com.tanidikvar.api.answer.dto.AnswerCreateRequest("Yönetim hesabından katkı denemesi"))).isInstanceOf(com.tanidikvar.api.common.error.DomainException.class).hasMessageContaining("Manager");
+  assertThatThrownBy(()->answerService.create(q,m.id(),new com.tanidikvar.api.answer.dto.AnswerCreateRequest("Yönetim hesabından katkı denemesi",false))).isInstanceOf(com.tanidikvar.api.common.error.DomainException.class).hasMessageContaining("Manager");
   mvc.perform(write("POST","/api/questions/"+q+"/answers",member,Map.of("body","Normal üyenin geçerli cevabı"))).andExpect(status().isCreated());
  }
  @Test void managerViewsNeverCountAndAnonymousOpeningsStillCount()throws Exception{

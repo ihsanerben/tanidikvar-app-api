@@ -1,0 +1,1 @@
+package com.tanidikvar.api.decision.dto;import jakarta.validation.constraints.*;import java.util.UUID;public record ExperienceRequest(@NotNull UUID universityId,UUID programId,@NotBlank String templateType,@NotBlank @Size(min=10,max=200) String title,@NotBlank @Size(min=20,max=5000) String body,String sentiment){}

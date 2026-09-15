@@ -14,12 +14,17 @@ public class PublicAdminProfileService {
  private final PublicAdminProfileRepository profiles;private final PublicAdminProfileMapper mapper;
  public PublicAdminProfileService(PublicAdminProfileRepository profiles,PublicAdminProfileMapper mapper){this.profiles=profiles;this.mapper=mapper;}
  @Transactional(readOnly=true)
- public PublicAdminProfileResponse get(UUID id){return profiles.find(id).map(mapper::toResponse).orElseThrow(()->new DomainException(404,"NOT_FOUND","Admin profili bulunamadı."));}
+ public PublicAdminProfileResponse get(UUID id){return profiles.find(id).map(mapper::toResponse).orElseThrow(()->new DomainException(404,"NOT_FOUND","Tanıdık profili bulunamadı."));}
  @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
  public PageResponse<PublicAdminProfileResponse> search(String query,boolean activeOnly,UUID university,UUID department,String educationStatus,int page,int size) {
+  return search(query,activeOnly,university,department,educationStatus,null,null,null,page,size);
+ }
+ @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+ public PageResponse<PublicAdminProfileResponse> search(String query,boolean activeOnly,UUID university,UUID department,String educationStatus,Integer classYear,Boolean verified,String expertise,int page,int size) {
   SearchQuery.page(page,size);String q=SearchQuery.clean(query);
   String role=SearchQuery.clean(educationStatus).toUpperCase(java.util.Locale.ROOT);if(!role.isEmpty()&&!java.util.Set.of("YKS_ADAYI","UNIVERSITE_OGRENCISI","MEZUN").contains(role))throw new DomainException(400,"INVALID_EDUCATION_STATUS","Rol filtresini kontrol et.");
-  return new PageResponse<>(profiles.search(q,activeOnly,university,department,role,page,size).stream().map(mapper::toResponse).toList(),page,size,profiles.count(q,activeOnly,university,department,role));
+  if(classYear!=null&&(classYear<1||classYear>8))throw new DomainException(400,"INVALID_CLASS_YEAR","Sınıf filtresini kontrol et.");String topic=SearchQuery.clean(expertise);
+  return new PageResponse<>(profiles.search(q,activeOnly,university,department,role,classYear,verified,topic,page,size).stream().map(mapper::toResponse).toList(),page,size,profiles.count(q,activeOnly,university,department,role,classYear,verified,topic));
  }
 
 }

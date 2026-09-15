@@ -1,0 +1,2 @@
+ALTER TABLE universities ADD COLUMN description varchar(2000),ADD COLUMN website_url varchar(500),ADD COLUMN logo_url varchar(500),ADD COLUMN accent_primary varchar(7),ADD COLUMN accent_soft varchar(7),ADD COLUMN accent_foreground varchar(7);
+ALTER TABLE universities ADD CONSTRAINT chk_university_colors CHECK ((accent_primary IS NULL OR accent_primary~'^#[0-9A-Fa-f]{6}$') AND (accent_soft IS NULL OR accent_soft~'^#[0-9A-Fa-f]{6}$') AND (accent_foreground IS NULL OR accent_foreground~'^#[0-9A-Fa-f]{6}$'));

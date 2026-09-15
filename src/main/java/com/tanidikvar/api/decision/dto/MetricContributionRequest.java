@@ -1,0 +1,1 @@
+package com.tanidikvar.api.decision.dto;import jakarta.validation.constraints.*;import java.math.BigDecimal;import java.util.UUID;public record MetricContributionRequest(@NotNull UUID universityId,UUID programId,@NotBlank String metricKey,@NotNull @DecimalMin("0") @DecimalMax("1000000") BigDecimal value){}

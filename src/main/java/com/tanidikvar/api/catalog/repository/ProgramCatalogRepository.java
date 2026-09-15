@@ -1,0 +1,90 @@
+package com.tanidikvar.api.catalog.repository;
+
+import com.tanidikvar.api.catalog.dto.*;
+import java.sql.*;
+import java.time.Instant;
+import java.util.*;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.stereotype.Repository;
+
+@Repository
+public class ProgramCatalogRepository {
+    private final JdbcTemplate jdbc;
+    public ProgramCatalogRepository(JdbcTemplate jdbc){this.jdbc=jdbc;}
+
+    private static final String ACTIVE="""
+            FROM programs p JOIN universities u ON u.id=p.university_id
+            JOIN program_families pf ON pf.id=p.program_family_id
+            JOIN admission_options ao ON ao.program_id=p.id AND ao.deleted_at IS NULL
+            LEFT JOIN academic_units au ON au.id=ao.academic_unit_id AND au.deleted_at IS NULL
+            LEFT JOIN admission_statistics current_stats ON current_stats.admission_option_id=ao.id AND current_stats.guide_year=2025
+            LEFT JOIN university_departments ud ON ud.program_id=p.id AND ud.deleted_at IS NULL
+            WHERE p.deleted_at IS NULL AND u.deleted_at IS NULL AND pf.deleted_at IS NULL
+            """;
+    private static final String FILTER="""
+            AND (strpos(search_fold(p.display_name),search_fold(?))>0 OR strpos(search_fold(u.name),search_fold(?))>0 OR strpos(search_fold(coalesce(au.name,'')),search_fold(?))>0)
+            AND (?='' OR search_fold(coalesce(u.city,''))=search_fold(?))
+            AND (?='' OR u.institution_type=?) AND (?='' OR pf.degree_level=?)
+            AND (?='' OR ao.score_type=?) AND (?::integer IS NULL OR ao.duration_years=?)
+            AND (?::integer IS NULL OR current_stats.success_rank>=?) AND (?::integer IS NULL OR current_stats.success_rank<=?)
+            AND (?='' OR strpos(search_fold(coalesce(au.name,'')),search_fold(?))>0)
+            AND (?::uuid IS NULL OR p.university_id=?)
+            """;
+    private static final String SUMMARY="""
+            SELECT p.id,ud.id education_id,ud.department_id,p.university_id,u.name university_name,u.city,u.institution_type,p.display_name,pf.degree_level,
+              string_agg(DISTINCT au.name,'|' ORDER BY au.name) FILTER (WHERE au.name IS NOT NULL) faculties,
+              string_agg(DISTINCT ao.score_type,'|' ORDER BY ao.score_type) FILTER (WHERE ao.score_type IS NOT NULL) score_types,
+              min(ao.duration_years) duration_years,count(DISTINCT ao.id) option_count,
+              min(current_stats.success_rank) current_best_rank,min(current_stats.minimum_score) current_minimum_score,
+              coalesce(sum(current_stats.quota) FILTER (WHERE current_stats.quota IS NOT NULL),0) current_quota,
+              coalesce(sum(current_stats.placed) FILTER (WHERE current_stats.placed IS NOT NULL),0) current_placed
+            """;
+    private static final String GROUP=" GROUP BY p.id,ud.id,ud.department_id,p.university_id,u.name,u.city,u.institution_type,p.display_name,pf.degree_level ";
+
+    public List<ProgramSummaryResponse> list(String query,String city,String type,String level,String scoreType,
+            Integer duration,Integer rankFrom,Integer rankTo,String faculty,UUID universityId,int page,int size,String sort){
+        String order=switch(sort){case "RANK"->"current_best_rank NULLS LAST,p.display_name";case "SCORE"->"current_minimum_score DESC NULLS LAST,p.display_name";case "QUOTA"->"current_quota DESC,p.display_name";default->"p.display_name,u.name";};
+        return jdbc.query(SUMMARY+ACTIVE+FILTER+GROUP+" ORDER BY "+order+" LIMIT ? OFFSET ?",this::mapSummary,
+                params(query,city,type,level,scoreType,duration,rankFrom,rankTo,faculty,universityId,size,page*size));
+    }
+    public long count(String query,String city,String type,String level,String scoreType,Integer duration,Integer rankFrom,Integer rankTo,String faculty,UUID universityId){
+        return jdbc.queryForObject("SELECT count(DISTINCT p.id) "+ACTIVE+FILTER,Long.class,
+                params(query,city,type,level,scoreType,duration,rankFrom,rankTo,faculty,universityId));
+    }
+    private Object[] params(String q,String city,String type,String level,String score,Integer duration,Integer from,Integer to,String faculty,UUID universityId,Object...tail){
+        List<Object> values=new ArrayList<>(List.of(q,q,q,city,city,type,type,level,level,score,score));
+        values.add(duration);values.add(duration);values.add(from);values.add(from);values.add(to);values.add(to);values.add(faculty);values.add(faculty);values.add(universityId);values.add(universityId);
+        values.addAll(Arrays.asList(tail));return values.toArray();
+    }
+    public Optional<ProgramSummaryResponse> summary(UUID id){return jdbc.query(SUMMARY+ACTIVE+" AND p.id=? "+GROUP,this::mapSummary,id).stream().findFirst();}
+    public List<AdmissionOptionResponse> options(UUID program){
+        var options=jdbc.query("""
+                SELECT ao.id,ao.guide_code,au.name faculty,ao.score_type,ao.duration_years
+                FROM admission_options ao LEFT JOIN academic_units au ON au.id=ao.academic_unit_id
+                WHERE ao.program_id=? AND ao.deleted_at IS NULL ORDER BY ao.guide_code
+                """,(r,n)->new OptionRow(r.getObject("id",UUID.class),r.getString("guide_code"),r.getString("faculty"),r.getString("score_type"),r.getObject("duration_years",Integer.class)),program);
+        return options.stream().map(option->new AdmissionOptionResponse(option.id,option.code,option.faculty,option.scoreType,option.duration,
+                jdbc.query("""
+                    SELECT guide_year,quota,placed,minimum_score,maximum_score,success_rank,placed_male,placed_female,
+                      average_secondary_score,total_preferences,demand_per_quota,average_preference_rank
+                    FROM admission_statistics WHERE admission_option_id=? ORDER BY guide_year DESC
+                    """,this::statistic,option.id))).toList();
+    }
+    public long scalar(String sql,Object...args){return jdbc.queryForObject(sql,Long.class,args);}
+    public List<LabelCountResponse> distribution(String sql,Object...args){return jdbc.query(sql,(r,n)->new LabelCountResponse(r.getString(1),r.getLong(2)),args);}
+    public List<YearCatalogStatisticsResponse> yearly(UUID university){
+        String filter=university==null?"":" AND p.university_id=?";
+        return jdbc.query("""
+                SELECT s.guide_year,count(DISTINCT ao.id),coalesce(sum(s.quota),0),coalesce(sum(s.placed),0),
+                  CASE WHEN sum(s.quota)>0 THEN round(sum(s.placed)::numeric*100/sum(s.quota),2) END,coalesce(sum(s.total_preferences),0)
+                FROM admission_statistics s JOIN admission_options ao ON ao.id=s.admission_option_id AND ao.deleted_at IS NULL
+                JOIN programs p ON p.id=ao.program_id AND p.deleted_at IS NULL JOIN universities u ON u.id=p.university_id AND u.deleted_at IS NULL
+                WHERE 1=1"""+filter+" GROUP BY s.guide_year ORDER BY s.guide_year",(r,n)->new YearCatalogStatisticsResponse(r.getInt(1),r.getLong(2),r.getLong(3),r.getLong(4),r.getBigDecimal(5),r.getLong(6)),university==null?new Object[]{}:new Object[]{university});
+    }
+    public Instant lastSync(){return jdbc.query("SELECT max(completed_at) FROM catalog_sync_runs WHERE source='TURKIYE_PROGRAMS' AND operation='APPLY' AND status='SUCCEEDED'",(r,n)->r.getTimestamp(1)==null?null:r.getTimestamp(1).toInstant()).getFirst();}
+    public List<ProgramSummaryResponse> best(UUID university){return jdbc.query(SUMMARY+ACTIVE+" AND p.university_id=? "+GROUP+" ORDER BY current_best_rank NULLS LAST LIMIT 10",this::mapSummary,university);}
+    private ProgramSummaryResponse mapSummary(ResultSet r,int n)throws SQLException{return new ProgramSummaryResponse(r.getObject("id",UUID.class),r.getObject("education_id",UUID.class),r.getObject("department_id",UUID.class),r.getObject("university_id",UUID.class),r.getString("university_name"),r.getString("city"),r.getString("institution_type"),r.getString("display_name"),r.getString("degree_level"),split(r.getString("faculties")),split(r.getString("score_types")),r.getObject("duration_years",Integer.class),r.getLong("option_count"),r.getObject("current_best_rank",Integer.class),r.getBigDecimal("current_minimum_score"),r.getLong("current_quota"),r.getLong("current_placed"));}
+    private AdmissionStatisticsResponse statistic(ResultSet r,int n)throws SQLException{return new AdmissionStatisticsResponse(r.getInt(1),r.getObject(2,Integer.class),r.getObject(3,Integer.class),r.getBigDecimal(4),r.getBigDecimal(5),r.getObject(6,Integer.class),r.getObject(7,Integer.class),r.getObject(8,Integer.class),r.getBigDecimal(9),r.getObject(10,Integer.class),r.getBigDecimal(11),r.getBigDecimal(12));}
+    private static List<String> split(String value){return value==null?List.of():List.of(value.split("\\|"));}
+    private record OptionRow(UUID id,String code,String faculty,String scoreType,Integer duration){}
+}

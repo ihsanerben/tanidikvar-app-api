@@ -36,7 +36,7 @@ public class QuestionService {
     public QuestionResponse get(UUID id) { return response(find(id,false)); }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public PageResponse<QuestionResponse> list(UUID actor,QuestionScope scope,UUID university,UUID tag,int page,int size) {
-        return discover(actor,scope,university,tag,null,null,null,null,"NEWEST",page,size);
+        return discover(actor,scope,university,tag,null,null,null,null,null,null,null,"NEWEST",page,size);
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public PageResponse<QuestionResponse> mine(UUID actor,String status,int page,int size) {
@@ -48,12 +48,14 @@ public class QuestionService {
         return new PageResponse<>(rows.stream().map(q->mapper.toResponse(q,tags.getOrDefault(q.id(),List.of()),summaries.get(q.id()))).toList(),page,size,questions.count(filters));
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
-    public PageResponse<QuestionResponse> discover(UUID actor,QuestionScope scope,UUID university,UUID tag,UUID department,UUID admin,String query,PopularPeriod period,String sort,int page,int size) {
+    public PageResponse<QuestionResponse> discover(UUID actor,QuestionScope scope,UUID university,UUID tag,UUID department,UUID admin,String city,Boolean answered,Boolean verifiedAnswer,String query,PopularPeriod period,String sort,int page,int size) {
         SearchQuery.page(page,size);String search=SearchQuery.clean(query);
         var filters=new HashMap<String,Object>();
         if(actor!=null)filters.put("actor",actor);if(scope!=null)filters.put("scope",scope.name());
         if(university!=null)filters.put("university",university);if(tag!=null)filters.put("tag",tag);
         if(department!=null)filters.put("department",department);if(admin!=null)filters.put("admin",admin);if(!search.isEmpty())filters.put("query",search);
+        String cityQuery=SearchQuery.clean(city);if(!cityQuery.isEmpty())filters.put("city",cityQuery);
+        if(answered!=null)filters.put("answered",answered);if(verifiedAnswer!=null)filters.put("verifiedAnswer",verifiedAnswer);
         if(period!=null) {
             var until=clock.instant();filters.put("until",Timestamp.from(until));filters.put("since",Timestamp.from(until.minusSeconds(period.seconds())));
             filters.put("seconds",period.seconds());filters.put("viewWeight",1);filters.put("likeWeight",5);filters.put("communityWeight",10);filters.put("adminWeight",25);

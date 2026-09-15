@@ -58,10 +58,10 @@ Set-Cookie headers.
 
 ## Storage blocker
 
-Render Free has an ephemeral filesystem. With `PILOT_MODE=true`, the API
-rejects avatar uploads and Admin application document uploads, and profile
-completion does not require an avatar. The web build likewise hides both
-actions. This prevents metadata that points to files which Render can lose.
+Render Free has an ephemeral filesystem. Yeni avatar ve Admin başvuru belgesi
+yükleme yüzeyi uygulamanın tamamında kapalıdır; profil baş harf avatarı kullanır.
+`PILOT_MODE=true` ayrıca pilot uyarılarını ve pilot sınırlamalarını etkinleştirir.
+Eski medya kayıtları migration uyumluluğu için korunur fakat kalıcı sayılmaz.
 
 Do not switch `PILOT_MODE` off until a private object-storage provider is
 selected and the current local-disk storage adapter is replaced. Neon persists

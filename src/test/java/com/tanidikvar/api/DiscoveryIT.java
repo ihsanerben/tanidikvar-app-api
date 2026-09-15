@@ -36,9 +36,9 @@ class DiscoveryIT {
     UUID verification(UUID u,String name){UUID uni=catalog("universities","Işık Üniversitesi"),dep=catalog("departments","Bilgisayar Mühendisliği"),edu=education(uni,dep),file=UUID.randomUUID(),v=UUID.randomUUID();
         jdbc.update("INSERT INTO stored_files(id,owner_id,purpose,storage_key,original_name,content_type,byte_size,upload_status) VALUES (?,?,'VERIFICATION',?,'belge.pdf','application/pdf',10,'READY')",file,u,file.toString());
         jdbc.update("INSERT INTO admin_applications(id,applicant_id,request_id,submitted_first_name,submitted_last_name,education_status,university_department_id,university_name,department_name,document_file_id,document_sha256,profile_version,status,reviewed_by,reviewed_at) VALUES (?,?,?,?,'Yılmaz','UNIVERSITE_OGRENCISI',?,'Işık Üniversitesi','Bilgisayar Mühendisliği',?,'test-hash',0,'APPROVED',?,CURRENT_TIMESTAMP)",v,u,UUID.randomUUID(),name,edu,file,u);
-        jdbc.update("UPDATE users SET authority='ADMIN',active_verification_application_id=? WHERE id=?",v,u);return v;
+        jdbc.update("UPDATE users SET authority='TANIDIK',active_verification_application_id=? WHERE id=?",v,u);return v;
     }
-    UUID answer(UUID q,UUID u,UUID v,Instant time){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO answers(id,question_id,author_id,answer_kind,body,published_at,verification_application_id) VALUES (?,?,?,?, 'Gerçek deneyim için test cevabı',?,?)",id,q,u,v==null?"COMMUNITY":"ADMIN",Timestamp.from(time),v);return id;}
+    UUID answer(UUID q,UUID u,UUID v,Instant time){UUID id=UUID.randomUUID();jdbc.update("INSERT INTO answers(id,question_id,author_id,answer_kind,body,published_at,verification_application_id) VALUES (?,?,?,?, 'Gerçek deneyim için test cevabı',?,?)",id,q,u,v==null?"COMMUNITY":"TANIDIK",Timestamp.from(time),v);return id;}
     JsonNode list(String path,Map<String,String> params)throws Exception {var request=get(path);params.forEach(request::param);return mapper.readTree(mvc.perform(request).andExpect(status().isOk()).andReturn().getResponse().getContentAsString());}
     List<String> ids(JsonNode page){var result=new ArrayList<String>();page.get("items").forEach(q->result.add(q.get("id").asText()));return result;}
     JsonNode popular(String query,String period)throws Exception{return list("/api/popular",Map.of("q",query,"period",period));}

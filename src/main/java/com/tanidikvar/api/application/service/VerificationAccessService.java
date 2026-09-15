@@ -11,6 +11,5 @@ public class VerificationAccessService {
  @Transactional(readOnly=true)
  public boolean approved(UUID owner,UUID id){return id!=null&&applications.find(id).filter(a->a.applicantId().equals(owner)&&a.status().equals("APPROVED")).isPresent();}
  @Transactional(propagation=Propagation.MANDATORY)
- public UUID requireApproved(UUID owner,UUID id){if(!approved(owner,id))throw new DomainException(403,"ADMIN_REQUIRED","Güncel Admin doğrulaması gerekiyor.");return id;}
+ public UUID requireApproved(UUID owner,UUID id){if(!approved(owner,id))throw new DomainException(403,"TANIDIK_REQUIRED","Güncel Tanıdık doğrulaması gerekiyor.");return id;}
 }
-

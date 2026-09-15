@@ -26,7 +26,7 @@ public class ApplicationService {
   var account=accounts.lockActive(owner);
   var old=duplicate(owner,request);if(old.isPresent())return old.get();
   var p=profiles.get(owner);
-  if(account.getAuthority()!=Authority.MEMBER||!p.completed())throw new DomainException(403,"APPLICATION_INELIGIBLE","Profilini tamamla; yalnız Admin olmayan kullanıcılar başvurabilir.");
+  if(account.getAuthority()!=Authority.MEMBER||!p.completed())throw new DomainException(403,"APPLICATION_INELIGIBLE","Profilini tamamla; yalnız Tanıdık olmayan kullanıcılar başvurabilir.");
   if(p.version()!=request.profileVersion())throw new DomainException(409,"STALE_VERSION","Profil değişmiş. Bilgilerini tekrar kontrol et.");
   if(applications.pending(owner))throw new DomainException(409,"APPLICATION_PENDING","Zaten bekleyen bir başvurun var.");
   if(p.education()!=null){catalog.lockReference(com.tanidikvar.api.catalog.entity.CatalogKind.UNIVERSITY,p.education().universityId(),true);catalog.lockReference(com.tanidikvar.api.catalog.entity.CatalogKind.DEPARTMENT,p.education().departmentId(),true);}
@@ -59,9 +59,9 @@ public class ApplicationService {
  @Transactional
  public void revoke(UUID actor,UUID owner,RevokeRequest request){
   manager(actor);if(actor.equals(owner))throw denied();var account=accounts.lockActive(owner);
-  if(account.getAuthority()!=Authority.ADMIN||!Objects.equals(account.getActiveVerificationApplicationId(),request.verificationId()))throw new DomainException(409,"STALE_VERSION","Aktif doğrulama değişmiş. Listeyi yenile.");
+  if(account.getAuthority()!=Authority.TANIDIK||!Objects.equals(account.getActiveVerificationApplicationId(),request.verificationId()))throw new DomainException(409,"STALE_VERSION","Aktif doğrulama değişmiş. Listeyi yenile.");
   String reason=reason(request.reason());
-  for(UUID id:applications.pendingIds(owner)){applications.decide(id,actor,"REJECTED","Admin yetkisi kaldırıldığı için kapatıldı: "+reason.substring(0,Math.min(reason.length(),900)));applications.audit(actor,"REJECTED","ADMIN_APPLICATION",id,"Yetki kaldırılması nedeniyle kapatıldı.");}
+  for(UUID id:applications.pendingIds(owner)){applications.decide(id,actor,"REJECTED","Tanıdık statüsü kaldırıldığı için kapatıldı: "+reason.substring(0,Math.min(reason.length(),900)));applications.audit(actor,"REJECTED","ADMIN_APPLICATION",id,"Tanıdık statüsünün kaldırılması nedeniyle kapatıldı.");}
   account.revokeAdmin(clock.instant());applications.audit(actor,"REVOKE_ADMIN","USER",owner,reason);
  }
  @Transactional(propagation=org.springframework.transaction.annotation.Propagation.MANDATORY)

@@ -107,7 +107,7 @@ class AnswerIT {
     }
 
     @Test void publicReadingAndProfileCsrfOwnershipAndKindAreEnforced()throws Exception {
-        var owner=member("MEMBER");var admin=member("ADMIN");var incomplete=actor("MEMBER");String q=question(owner),path="/api/questions/"+q+"/answers";
+        var owner=member("MEMBER");var admin=member("TANIDIK");var incomplete=actor("MEMBER");String q=question(owner),path="/api/questions/"+q+"/answers";
         mvc.perform(get(path)).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
         mvc.perform(post(path).with(csrf()).contentType("application/json").content("{\"body\":\"Örnek topluluk cevabıdır\"}")).andExpect(status().isUnauthorized());
         mvc.perform(write("POST",path,incomplete,Map.of("body","Örnek topluluk cevabıdır"))).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("PROFILE_REQUIRED"));
@@ -118,7 +118,7 @@ class AnswerIT {
         mvc.perform(get(path)).andExpect(jsonPath("$.items[0].email").doesNotExist());
     }
     @Test void eachAuthorHasOneAnswerAndPrivateEndpointOnlyReturnsTheirOwn()throws Exception {
-        var owner=member("MEMBER");var other=member("ADMIN");String q=question(owner);
+        var owner=member("MEMBER");var other=member("TANIDIK");String q=question(owner);
         mvc.perform(get("/api/questions/"+q+"/my-answer").cookie(owner.cookie())).andExpect(status().isNoContent());
         var first=answer(owner,q,"Birinci kişinin özgün deneyimi");var second=answer(other,q,"İkinci kişinin özgün deneyimi");
         mvc.perform(get("/api/questions/"+q+"/answers").param("size","1").param("page","1")).andExpect(jsonPath("$.totalElements").value(2)).andExpect(jsonPath("$.items[0].id").value(second.get("id").asText()));
@@ -186,7 +186,7 @@ class AnswerIT {
         assertThat(jdbc.queryForObject("SELECT deleted_at IS NULL FROM answers WHERE id=?",Boolean.class,UUID.fromString(answer.get("id").asText()))).isTrue();
     }
     @Test void authorityChangesDoNotChangeAnswerKindAndDeletedAccountsAreAnonymized()throws Exception {
-        var a=member("ADMIN");String q=question(member("MEMBER"));answer(a,q,"Adminin topluluk bölümündeki cevabı");
+        var a=member("TANIDIK");String q=question(member("MEMBER"));answer(a,q,"Tanıdığın topluluk bölümündeki cevabı");
         jdbc.update("UPDATE users SET authority='MEMBER' WHERE id=?",a.id());
         mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].answerKind").value("COMMUNITY"));
         jdbc.update("UPDATE users SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",a.id());

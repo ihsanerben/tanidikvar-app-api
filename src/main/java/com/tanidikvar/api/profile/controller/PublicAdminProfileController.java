@@ -12,7 +12,7 @@ public class PublicAdminProfileController {
  private final PublicAdminProfileService profiles;private final AdminAnswerService answers;
  public PublicAdminProfileController(PublicAdminProfileService profiles,AdminAnswerService answers){this.profiles=profiles;this.answers=answers;}
  @GetMapping("/api/admins")
- @Operation(summary="Herkese açık Admin profillerini isimle arar; geçmiş Adminler işaretlenir, sayfalıdır")
+ @Operation(summary="Geri dönüş istemcisi için kullanımdan kaldırılmış Tanıdık profil alias'ı")
  public PageResponse<PublicAdminProfileResponse> search(@RequestParam(required=false) String q,@RequestParam(defaultValue="true") boolean activeOnly,@RequestParam(required=false) UUID universityId,@RequestParam(required=false) UUID departmentId,@RequestParam(required=false) String educationStatus,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return profiles.search(q,true,universityId,departmentId,educationStatus,page,size);}
  @GetMapping("/api/admins/{id}") public PublicAdminProfileResponse get(@PathVariable UUID id){return profiles.get(id);}
  @GetMapping("/api/admins/{id}/answers") public PageResponse<AdminAnswerResponse> history(@PathVariable UUID id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){profiles.get(id);return answers.history(id,page,size);}

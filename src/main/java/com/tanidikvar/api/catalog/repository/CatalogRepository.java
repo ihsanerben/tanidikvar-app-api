@@ -1,7 +1,7 @@
 package com.tanidikvar.api.catalog.repository;
 
 import com.tanidikvar.api.catalog.entity.*;
-import com.tanidikvar.api.catalog.dto.EducationResponse;
+import com.tanidikvar.api.catalog.dto.*;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.*;
@@ -16,6 +16,12 @@ public class CatalogRepository {
         return new CatalogEntry(rs.getObject("id",UUID.class),rs.getString("name"),
                 rs.getTimestamp("deleted_at")==null?null:rs.getTimestamp("deleted_at").toInstant(),rs.getLong("version"));
     }
+    private static final String UNIVERSITY_COLUMNS="id,name,city,institution_type,description,website_url,logo_url,accent_primary,accent_soft,accent_foreground,deleted_at,version";
+    private UniversityResponse university(ResultSet r,int n)throws SQLException{return new UniversityResponse(r.getObject("id",UUID.class),r.getString("name"),r.getString("city"),r.getString("institution_type"),r.getString("description"),r.getString("website_url"),r.getString("logo_url"),r.getString("accent_primary"),r.getString("accent_soft"),r.getString("accent_foreground"),r.getTimestamp("deleted_at")==null?null:r.getTimestamp("deleted_at").toInstant(),r.getLong("version"));}
+    public List<UniversityResponse> universities(String query,String city,String type,int page,int size){return jdbc.query("SELECT "+UNIVERSITY_COLUMNS+" FROM universities WHERE deleted_at IS NULL AND strpos(search_fold(name),search_fold(?))>0 AND (?='' OR search_fold(coalesce(city,''))=search_fold(?)) AND (?='' OR institution_type=?) ORDER BY normalized_name,id LIMIT ? OFFSET ?",this::university,query,city,city,type,type,size,page*size);}
+    public long universityCount(String query,String city,String type){return jdbc.queryForObject("SELECT count(*) FROM universities WHERE deleted_at IS NULL AND strpos(search_fold(name),search_fold(?))>0 AND (?='' OR search_fold(coalesce(city,''))=search_fold(?)) AND (?='' OR institution_type=?)",Long.class,query,city,city,type,type);}
+    public Optional<UniversityResponse> university(UUID id,boolean lock){return jdbc.query("SELECT "+UNIVERSITY_COLUMNS+" FROM universities WHERE id=?"+(lock?" FOR UPDATE":""),this::university,id).stream().findFirst();}
+    public void universityDetails(UUID id,UniversityDetailsRequest r){jdbc.update("UPDATE universities SET city=nullif(trim(?),''),institution_type=coalesce(?,institution_type),description=nullif(trim(?),''),website_url=nullif(trim(?),''),logo_url=nullif(trim(?),''),accent_primary=nullif(upper(trim(?)),''),accent_soft=nullif(upper(trim(?)),''),accent_foreground=nullif(upper(trim(?)),''),updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=?",r.city(),r.institutionType(),r.description(),r.websiteUrl(),r.logoUrl(),r.accentPrimary(),r.accentSoft(),r.accentForeground(),id);}
     public List<CatalogEntry> list(CatalogKind kind,String query,boolean includeDeleted,int page,int size) {
         return jdbc.query("SELECT id,name,deleted_at,version FROM "+kind.table()+" WHERE (? OR deleted_at IS NULL) AND strpos(search_fold(name),search_fold(?))>0 ORDER BY normalized_name,id LIMIT ? OFFSET ?",
                 this::entry,includeDeleted,query,size,page*size);
@@ -69,11 +75,21 @@ public class CatalogRepository {
     public long educationCount(UUID university,String query,boolean includeDeleted) {
         return jdbc.queryForObject("SELECT count(*) FROM university_departments ud JOIN universities u ON u.id=ud.university_id JOIN departments d ON d.id=ud.department_id WHERE ud.university_id=? AND (? OR (ud.deleted_at IS NULL AND u.deleted_at IS NULL AND d.deleted_at IS NULL)) AND strpos(search_fold(d.name),search_fold(?))>0",Long.class,university,includeDeleted,query);
     }
+    public List<EducationResponse> publicProgramList(String query,int page,int size) {
+        return jdbc.query(EDUCATION+"WHERE ud.deleted_at IS NULL AND u.deleted_at IS NULL AND d.deleted_at IS NULL AND (strpos(search_fold(d.name),search_fold(?))>0 OR strpos(search_fold(u.name),search_fold(?))>0) ORDER BY d.normalized_name,u.normalized_name,ud.id LIMIT ? OFFSET ?",
+                this::mapEducation,query,query,size,page*size);
+    }
+    public long publicProgramCount(String query) {
+        return jdbc.queryForObject("SELECT count(*) FROM university_departments ud JOIN universities u ON u.id=ud.university_id JOIN departments d ON d.id=ud.department_id WHERE ud.deleted_at IS NULL AND u.deleted_at IS NULL AND d.deleted_at IS NULL AND (strpos(search_fold(d.name),search_fold(?))>0 OR strpos(search_fold(u.name),search_fold(?))>0)",Long.class,query,query);
+    }
     public void createEducation(UUID id,UUID university,UUID department) {
         jdbc.update("INSERT INTO university_departments(id,university_id,department_id) VALUES (?,?,?)",id,university,department);
     }
     public Optional<EducationResponse> education(UUID university,UUID department) {
         return jdbc.query(EDUCATION+"WHERE ud.university_id=? AND ud.department_id=? FOR UPDATE OF ud",this::mapEducation,university,department).stream().findFirst();
+    }
+    public Optional<EducationResponse> findEducation(UUID university,UUID department) {
+        return jdbc.query(EDUCATION+"WHERE ud.university_id=? AND ud.department_id=?",this::mapEducation,university,department).stream().findFirst();
     }
     public void educationStatus(UUID id,boolean deleted) {
         jdbc.update("UPDATE university_departments SET deleted_at=CASE WHEN ? THEN CURRENT_TIMESTAMP ELSE NULL END,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=?",deleted,id);
