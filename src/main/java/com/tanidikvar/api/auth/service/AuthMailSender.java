@@ -35,8 +35,7 @@ public class AuthMailSender {
         // Fragment keeps the secret out of frontend access logs and HTTP Referer.
         String url = frontendUrl + (verify ? "/verify-email" : "/reset-password") + "#token=" + event.token();
         String text = (verify ? "E-posta adresini doğrulamak için (24 saat geçerli):" : "Şifreni yenilemek için (30 dakika geçerli):")
-                + "\n\n" + url + "\n\nBu işlemi sen başlatmadıysan bu e-postayı yok sayabilirsin."
-                + "\n\nSevgiler,\nTanıdıkVar Ekibi";
+                + "\n\n" + url + "\n\nSevgiler,\nTanıdıkVar Ekibi";
         String action = verify ? "E-posta adresimi doğrula" : "Şifremi yenile";
         String intro = verify ? "E-posta adresini doğrulamak için aşağıdaki butonu kullan. Bu bağlantı 24 saat geçerlidir."
                 : "Şifreni yenilemek için aşağıdaki butonu kullan. Bu bağlantı 30 dakika geçerlidir.";
@@ -48,7 +47,7 @@ public class AuthMailSender {
                 + "<p style=\"margin:0;color:#50645b\">" + intro + "</p>"
                 + "<p style=\"margin:28px 0\"><a href=\"" + safeUrl + "\" target=\"_blank\" rel=\"noopener noreferrer\" "
                 + "style=\"display:inline-block;padding:14px 22px;border-radius:10px;background:#2f8f57;color:#fff;text-decoration:none;font-weight:700\">"
-                + action + "</a></p><div style=\"padding:14px 16px;border-radius:10px;background:#f5f7f2;color:#637369;font-size:13px\">Bu işlemi sen başlatmadıysan bu e-postayı güvenle yok sayabilirsin.</div>"
+                + action + "</a></p>"
                 + "<p style=\"margin:26px 0 0;color:#50645b\">Sevgiler,<br><strong>TanıdıkVar Ekibi</strong></p></div></div></div>";
         try { delivery.send(new AuthMailMessage(from, event.email(), subject, text, html)); }
         catch (RuntimeException e) { log.warn("auth_mail_delivery_failed purpose={} errorType={} message={}", event.purpose(), e.getClass().getSimpleName(), e.getMessage()); }
