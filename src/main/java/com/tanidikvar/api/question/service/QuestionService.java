@@ -2,6 +2,7 @@ package com.tanidikvar.api.question.service;
 import com.tanidikvar.api.auth.service.AccountAccessService;
 import com.tanidikvar.api.catalog.entity.CatalogKind;
 import com.tanidikvar.api.catalog.service.CatalogService;
+import com.tanidikvar.api.catalog.service.ProgramCatalogService;
 import com.tanidikvar.api.common.dto.PageResponse;
 import com.tanidikvar.api.common.error.DomainException;
 import com.tanidikvar.api.profile.service.InteractionPolicy;
@@ -24,11 +25,12 @@ public class QuestionService {
     private final AccountAccessService accounts;
     private final InteractionPolicy interaction;
     private final CatalogService catalog;
+    private final ProgramCatalogService programs;
     private final Clock clock;
-    public QuestionService(QuestionRepository questions,QuestionMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,CatalogService catalog,com.tanidikvar.api.engagement.service.QuestionStatisticsService statistics,Clock clock) {
+    public QuestionService(QuestionRepository questions,QuestionMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,CatalogService catalog,ProgramCatalogService programs,com.tanidikvar.api.engagement.service.QuestionStatisticsService statistics,Clock clock) {
         this.clock=clock;
         this.statistics=statistics;
-        this.questions=questions;this.mapper=mapper;this.accounts=accounts;this.interaction=interaction;this.catalog=catalog;
+        this.questions=questions;this.mapper=mapper;this.accounts=accounts;this.interaction=interaction;this.catalog=catalog;this.programs=programs;
     }
     private Question find(UUID id,boolean lock) { return questions.find(id,lock).orElseThrow(()->new DomainException(404,"NOT_FOUND","Soru bulunamadı.")); }
     private QuestionResponse response(Question q) { return mapper.toResponse(q,questions.tags(List.of(q.id())).getOrDefault(q.id(),List.of()),statistics.get(q.id())); }
@@ -77,13 +79,15 @@ public class QuestionService {
         if(title.length()<10||title.length()>200)throw new DomainException(400,"VALIDATION_FAILED","Soru başlığını kontrol et.",Map.of("title","10–200 karakter"));
         if(c.tagIds().size()>5||new HashSet<>(c.tagIds()).size()!=c.tagIds().size())throw new DomainException(400,"VALIDATION_FAILED","Tag seçimini kontrol et.",Map.of("tagIds","En fazla 5 farklı tag"));
         boolean valid=switch(c.scope()) {
-            case GENERAL -> c.universityId()==null && c.departmentId()==null;
-            case UNIVERSITY -> c.universityId()!=null && c.departmentId()==null;
-            case UNIVERSITY_DEPARTMENT -> c.universityId()!=null && c.departmentId()!=null;
+            case GENERAL -> c.universityId()==null && c.programId()==null && c.departmentId()==null;
+            case UNIVERSITY -> c.universityId()!=null && c.programId()==null && c.departmentId()==null;
+            case UNIVERSITY_DEPARTMENT -> c.universityId()!=null && (c.programId()!=null || c.departmentId()!=null);
         };
         if(!valid)throw new DomainException(400,"VALIDATION_FAILED","Soru kapsamıyla eğitim seçimi uyuşmuyor.",Map.of("scope","Kapsama uygun eğitim seç"));
         String body=c.body()==null?null:c.body().strip();
-        return new QuestionContent(title,body==null||body.isEmpty()?null:body,c.scope(),c.universityId(),c.departmentId(),c.tagIds());
+        UUID programId=c.programId(),departmentId=c.departmentId();
+        if(programId!=null){var selected=programs.detail(programId).summary();if(!selected.universityId().equals(c.universityId()))throw new DomainException(400,"VALIDATION_FAILED","Program seçilen üniversiteye ait değil.");departmentId=selected.departmentId();}
+        return new QuestionContent(title,body==null||body.isEmpty()?null:body,c.scope(),c.universityId(),programId,departmentId,c.tagIds());
     }
     private void references(QuestionContent c,Question old,List<QuestionTagResponse> oldTags) {
         if(c.universityId()!=null)catalog.lockReference(CatalogKind.UNIVERSITY,c.universityId(),old==null||!c.universityId().equals(old.universityId()));
@@ -93,7 +97,7 @@ public class QuestionService {
     }
     private boolean sameContent(Question q,QuestionContent content,List<QuestionTagResponse> oldTags) {
         return q.title().equals(content.title())&&Objects.equals(q.body(),content.body())&&q.scope()==content.scope()
-                &&Objects.equals(q.universityId(),content.universityId())&&Objects.equals(q.departmentId(),content.departmentId())
+                &&Objects.equals(q.universityId(),content.universityId())&&Objects.equals(q.programId(),content.programId())&&Objects.equals(q.departmentId(),content.departmentId())
                 &&new HashSet<>(oldTags.stream().map(QuestionTagResponse::id).toList()).equals(new HashSet<>(content.tagIds()));
     }
     @Transactional

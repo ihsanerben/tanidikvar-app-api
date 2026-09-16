@@ -11,6 +11,7 @@ import java.sql.SQLException;
 import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.List;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.UUID;
@@ -39,6 +40,7 @@ public class YokCatalogSyncRepository {
                 FROM catalog_sync_runs WHERE id=?
                 """,this::run,id).stream().findFirst();
     }
+    public List<YokCatalogSyncResponse> history(int size){return jdbc.query("SELECT id,operation,status,snapshot_checksum,universities_seen,programs_seen,options_seen,started_at,completed_at,failure_reason,quality_report::text AS quality_report FROM catalog_sync_runs WHERE source='TURKIYE_PROGRAMS' ORDER BY started_at DESC,id DESC LIMIT ?",this::run,size);}
 
     public String lockStatus(UUID id) {
         return jdbc.queryForObject("SELECT status FROM catalog_sync_runs WHERE id=? FOR UPDATE",String.class,id);

@@ -16,13 +16,14 @@ public class QuestionRepository {
         LEFT JOIN stored_files f ON f.owner_id=a.id AND f.purpose='AVATAR' AND f.upload_status='READY' AND f.deleted_at IS NULL
         LEFT JOIN universities u ON u.id=q.university_id
         LEFT JOIN departments d ON d.id=q.department_id
+        LEFT JOIN programs np ON np.id=q.program_id
         """;
-    private static final String SELECT="SELECT q.*,concat_ws(' ',p.first_name,p.last_name) author_name,u.name university_name,d.name department_name,f.id avatar_file_id,p.education_status,(a.authority='TANIDIK' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=a.active_verification_application_id AND v.applicant_id=a.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin "+FROM;
+    private static final String SELECT="SELECT q.*,concat_ws(' ',p.first_name,p.last_name) author_name,u.name university_name,coalesce(np.display_name,d.name) department_name,f.id avatar_file_id,p.education_status,(a.authority='TANIDIK' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=a.active_verification_application_id AND v.applicant_id=a.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin "+FROM;
     private Instant time(ResultSet r,String key)throws SQLException { var t=r.getTimestamp(key);return t==null?null:t.toInstant(); }
     private Question map(ResultSet r,int n)throws SQLException {
         String name=r.getString("author_name");
         return new Question(r.getObject("id",UUID.class),r.getObject("author_id",UUID.class),r.getString("title"),r.getString("body"),
-                QuestionScope.valueOf(r.getString("scope")),r.getObject("university_id",UUID.class),r.getObject("department_id",UUID.class),
+                QuestionScope.valueOf(r.getString("scope")),r.getObject("university_id",UUID.class),r.getObject("program_id",UUID.class),r.getObject("department_id",UUID.class),
                 time(r,"created_at"),time(r,"edited_at"),time(r,"archived_at"),time(r,"deleted_at"),r.getLong("version"),
                 name==null||name.isBlank()?null:name,r.getString("university_name"),r.getString("department_name"),r.getObject("avatar_file_id",UUID.class),r.getString("education_status"),r.getBoolean("active_admin"),r.getObject("best_answer_id",UUID.class));
     }
@@ -34,14 +35,14 @@ public class QuestionRepository {
     }
     private Map<String,Object> parameters(UUID id,QuestionContent c) {
         var p=new HashMap<String,Object>();p.put("id",id);p.put("title",c.title());p.put("body",c.body());p.put("scope",c.scope().name());
-        p.put("university",c.universityId());p.put("department",c.departmentId());return p;
+        p.put("university",c.universityId());p.put("program",c.programId());p.put("department",c.departmentId());return p;
     }
     public void create(UUID id,UUID actor,UUID request,QuestionContent c) {
         var p=parameters(id,c);p.put("actor",actor);p.put("request",request);
-        jdbc.update("INSERT INTO questions(id,author_id,request_id,title,body,scope,university_id,department_id,university_department_id) VALUES (:id,:actor,:request,:title,:body,:scope,:university,:department,NULL)",p);
+        jdbc.update("INSERT INTO questions(id,author_id,request_id,title,body,scope,university_id,program_id,department_id,university_department_id) VALUES (:id,:actor,:request,:title,:body,:scope,:university,:program,:department,NULL)",p);
     }
     public void update(UUID id,QuestionContent c) {
-        jdbc.update("UPDATE questions SET title=:title,body=:body,scope=:scope,university_id=:university,department_id=:department,university_department_id=NULL,edited_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=:id",parameters(id,c));
+        jdbc.update("UPDATE questions SET title=:title,body=:body,scope=:scope,university_id=:university,program_id=:program,department_id=:department,university_department_id=NULL,edited_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=:id",parameters(id,c));
     }
     public void archive(UUID id) { jdbc.update("UPDATE questions SET archived_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=:id",Map.of("id",id)); }
     public void restore(UUID id) { jdbc.update("UPDATE questions SET archived_at=NULL,updated_at=CURRENT_TIMESTAMP,version=version+1 WHERE id=:id",Map.of("id",id)); }
@@ -69,6 +70,7 @@ public class QuestionRepository {
         if(p.containsKey("university"))sql+=" AND u.id=:university";
         if(p.containsKey("tag"))sql+=" AND EXISTS (SELECT 1 FROM question_tags qt JOIN tags t ON t.id=qt.tag_id AND t.deleted_at IS NULL WHERE qt.question_id=q.id AND qt.tag_id=:tag AND qt.deleted_at IS NULL)";
         if(p.containsKey("department"))sql+=" AND q.department_id=:department";
+        if(p.containsKey("program"))sql+=" AND q.program_id=:program";
         if(p.containsKey("city"))sql+=" AND u.deleted_at IS NULL AND strpos(search_fold(coalesce(u.city,'')),search_fold(:city))>0";
         if(p.containsKey("answered"))sql+=Boolean.TRUE.equals(p.get("answered"))
             ?" AND EXISTS (SELECT 1 FROM answers qa WHERE qa.question_id=q.id AND qa.deleted_at IS NULL AND qa.moderated_at IS NULL)"

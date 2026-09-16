@@ -5,6 +5,7 @@ import com.tanidikvar.api.catalog.sync.model.YokAtlasSnapshot;
 import com.tanidikvar.api.catalog.sync.repository.YokCatalogSyncRepository;
 import com.tanidikvar.api.common.error.DomainException;
 import java.util.UUID;
+import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,6 +22,7 @@ public class YokCatalogSyncPersistence {
 
     @Transactional(readOnly=true)
     public YokCatalogSyncResponse get(UUID id){return repository.find(id).orElseThrow(()->new DomainException(404,"NOT_FOUND","Senkronizasyon kaydı bulunamadı."));}
+    @Transactional(readOnly=true) public List<YokCatalogSyncResponse> history(){return repository.history(50);}
 
     @Transactional
     public void apply(UUID id,YokAtlasSnapshot snapshot){

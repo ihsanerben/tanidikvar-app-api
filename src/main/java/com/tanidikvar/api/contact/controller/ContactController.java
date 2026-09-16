@@ -1,0 +1,3 @@
+package com.tanidikvar.api.contact.controller;
+import com.tanidikvar.api.contact.dto.ContactRequest;import com.tanidikvar.api.contact.service.ContactService;import jakarta.validation.Valid;import org.springframework.http.HttpStatus;import org.springframework.web.bind.annotation.*;
+@RestController @RequestMapping("/api/contact") public class ContactController{private final ContactService service;public ContactController(ContactService service){this.service=service;}@PostMapping @ResponseStatus(HttpStatus.ACCEPTED)public void send(@Valid @RequestBody ContactRequest request){service.send(request);}}

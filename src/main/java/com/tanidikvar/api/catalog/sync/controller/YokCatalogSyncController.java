@@ -33,4 +33,5 @@ public class YokCatalogSyncController {
 
     @GetMapping("/{id}")
     public YokCatalogSyncResponse get(@PathVariable UUID id){return service.get(id);}
+    @GetMapping public java.util.List<YokCatalogSyncResponse> history(){return service.history();}
 }

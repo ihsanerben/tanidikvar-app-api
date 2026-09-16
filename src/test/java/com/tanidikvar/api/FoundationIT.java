@@ -104,7 +104,7 @@ class FoundationIT {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"))
                 .andExpect(jsonPath("$.database").value("up"))
                 .andExpect(header().exists("X-Request-ID"));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(45);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(46);
         assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM information_schema.tables
                 WHERE table_schema='public' AND table_name IN

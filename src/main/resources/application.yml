@@ -54,6 +54,7 @@ app:
     provider: ${MAIL_PROVIDER:smtp}
     frontend-url: ${FRONTEND_URL:http://localhost:5173}
     from: ${MAIL_FROM:noreply@tanidikvar.local}
+    contact-recipient: ${CONTACT_RECIPIENT:tanidikvar@gmail.com}
     resend-api-key: ${RESEND_API_KEY:}
     resend-endpoint: ${RESEND_ENDPOINT:https://api.resend.com/emails}
   cors-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}

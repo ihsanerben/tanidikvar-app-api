@@ -43,6 +43,7 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/api/health", "/api/auth/csrf", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
                                 "/api/auth/resend-verification", "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/contact").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/universities", "/api/universities/*", "/api/universities/*/departments", "/api/universities/*/departments/*", "/api/universities/*/catalog-statistics", "/api/departments", "/api/programs", "/api/catalog-programs", "/api/catalog-programs/*", "/api/statistics/overview", "/api/tags").permitAll()
                         .requestMatchers("/api/manager/**").hasRole("MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/questions").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "TANIDIK")

@@ -207,8 +207,7 @@ class ProfileCatalogIT {
         mvc.perform(get("/api/universities/"+universityId+"/departments/"+departmentId)).andExpect(status().isOk())
                 .andExpect(jsonPath("$.universityId").value(universityId)).andExpect(jsonPath("$.departmentId").value(departmentId));
         mvc.perform(get("/api/programs").param("q",departmentName))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
-                .andExpect(jsonPath("$.items[0].universityId").value(universityId)).andExpect(jsonPath("$.items[0].departmentId").value(departmentId));
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
         mvc.perform(get("/api/universities/"+UUID.randomUUID())).andExpect(status().isNotFound());
         mvc.perform(write("PUT","/api/manager/catalog/UNIVERSITY/"+universityId+"/status",manager,Map.of("deleted",true,"version",1))).andExpect(status().isOk());
         mvc.perform(get("/api/universities/"+universityId)).andExpect(status().isNotFound());
@@ -238,7 +237,7 @@ class ProfileCatalogIT {
         mvc.perform(get("/api/me/follows")).andExpect(status().isUnauthorized());
     }
     @Test void evaluationsAreScopedValidatedAndUpdatedInPlace()throws Exception{
-        var member=actor("MEMBER");var manager=actor("MANAGER");var ids=education(manager);String university=ids.get("universityId").asText(),department=ids.get("departmentId").asText();
+        var member=actor("TANIDIK");var manager=actor("MANAGER");var ids=education(manager);String university=ids.get("universityId").asText(),department=ids.get("departmentId").asText();
         var relation=mapper.readTree(mvc.perform(write("POST","/api/manager/university-departments",manager,Map.of("universityId",university,"departmentId",department))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());String program=relation.get("id").asText();
         var profile=profile("UNIVERSITE_OGRENCISI",0);profile.put("universityId",university);profile.put("departmentId",department);profile.put("classYear",2);
         mvc.perform(write("PUT","/api/me/profile",member,profile)).andExpect(status().isOk());
@@ -296,7 +295,7 @@ class ProfileCatalogIT {
     }
     @Test void adminCanCreateQuestionThroughHttpAndService()throws Exception{
         var admin=actor("TANIDIK");mvc.perform(write("PUT","/api/me/profile",admin,profile("YKS_ADAYI",0))).andExpect(status().isOk());
-        var content=new com.tanidikvar.api.question.dto.QuestionContent("Admin soru oluşturamaz",null,com.tanidikvar.api.question.entity.QuestionScope.GENERAL,null,null,List.of());
+        var content=new com.tanidikvar.api.question.dto.QuestionContent("Admin soru oluşturamaz",null,com.tanidikvar.api.question.entity.QuestionScope.GENERAL,null,null,null,List.of());
         var request=new com.tanidikvar.api.question.dto.QuestionCreateRequest(UUID.randomUUID(),content);
         mvc.perform(write("POST","/api/questions",admin,request)).andExpect(status().isCreated());
         var second=new com.tanidikvar.api.question.dto.QuestionCreateRequest(UUID.randomUUID(),content);
@@ -344,9 +343,9 @@ class ProfileCatalogIT {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM gamification_fraud_signals WHERE signal_type IN ('LOW_QUALITY_ANSWER','DUPLICATE_CONTENT','SELF_VOTE')",Long.class)).isGreaterThanOrEqualTo(3);
     }
     @Test void followedContextActivitiesAchievementsAndTitlesCreatePreferenceAwareNotifications()throws Exception{
-        var follower=actor("MEMBER");var contributor=actor("MEMBER");var manager=actor("MANAGER");var ids=education(manager);UUID university=UUID.fromString(ids.get("universityId").asText());
+        var follower=actor("MEMBER");var contributor=actor("TANIDIK");var manager=actor("MANAGER");var ids=education(manager);UUID university=UUID.fromString(ids.get("universityId").asText());
         mvc.perform(write("PUT","/api/me/follows",follower,Map.of("targetType","UNIVERSITY","targetId",university,"active",true))).andExpect(status().isOk());
-        mvc.perform(write("PUT","/api/me/profile",contributor,profile("YKS_ADAYI",0))).andExpect(status().isOk());
+        var contributorProfile=profile("UNIVERSITE_OGRENCISI",0);contributorProfile.put("universityId",university);contributorProfile.put("departmentId",ids.get("departmentId").asText());contributorProfile.put("classYear",2);mvc.perform(write("PUT","/api/me/profile",contributor,contributorProfile)).andExpect(status().isOk());
         mvc.perform(write("PUT","/api/evaluations",contributor,Map.of("universityId",university,"rating",4,"body","Takip bildirimi için yeterli değerlendirme açıklaması."))).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND notification_type='NEW_EVALUATION'",Long.class,follower.id())).isEqualTo(1);
         jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version) VALUES (?,?,?,?,?,?,1)",UUID.randomUUID(),follower.id(),"TEST_TITLE",100,"TEST",UUID.randomUUID());
@@ -362,7 +361,7 @@ class ProfileCatalogIT {
         String program=mapper.readTree(mvc.perform(write("POST","/api/manager/university-departments",manager,Map.of("universityId",university,"departmentId",department))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();
         var graduates=new ArrayList<Actor>();
         for(int i=0;i<5;i++){
-            var graduate=actor("MEMBER");graduates.add(graduate);var body=profile("MEZUN",0);body.put("universityId",university);body.put("departmentId",department);body.put("graduationYear",2025);
+            var graduate=actor("TANIDIK");graduates.add(graduate);var body=profile("MEZUN",0);body.put("universityId",university);body.put("departmentId",department);body.put("graduationYear",2025);
             mvc.perform(write("PUT","/api/me/profile",graduate,body)).andExpect(status().isOk());
             mvc.perform(write("PUT","/api/career-outcomes",graduate,Map.of("universityId",university,"programId",program,"sector",i<3?"Yazılım":"Finans","firstRole","Mühendis","companyType","Özel sektör","graduateStudy",i==4,"jobSearchMonths",i+1))).andExpect(status().isNoContent());
             if(i==3)mvc.perform(get("/api/career-outcomes").param("universityId",university).param("programId",program)).andExpect(status().isOk()).andExpect(jsonPath("$.sampleSize").value(4)).andExpect(jsonPath("$.privacyThresholdMet").value(false)).andExpect(jsonPath("$.sectors").isEmpty());

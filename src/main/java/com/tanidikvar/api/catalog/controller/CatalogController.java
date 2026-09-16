@@ -26,8 +26,6 @@ public class CatalogController {
     @PutMapping("/manager/universities/{id}/details") public UniversityResponse universityDetails(@AuthenticationPrincipal SessionPrincipal principal,@PathVariable UUID id,@Valid@RequestBody UniversityDetailsRequest request){return catalog.universityDetails(principal.userId(),id,request);}
     @GetMapping("/departments") public PageResponse<CatalogResponse> departments(@RequestParam(defaultValue="") String q,
             @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) { return catalog.list(CatalogKind.DEPARTMENT,q,false,page,size); }
-    @GetMapping("/programs") public PageResponse<EducationResponse> programs(@RequestParam(defaultValue="") String q,
-            @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) { return catalog.publicPrograms(q,page,size); }
     @GetMapping("/tags") public PageResponse<CatalogResponse> tags(@RequestParam(defaultValue="") String q,
             @RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) { return catalog.list(CatalogKind.TAG,q,false,page,size); }
     @GetMapping("/universities/{id}/departments") public PageResponse<EducationResponse> education(@PathVariable UUID id,

@@ -34,6 +34,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
             return AUTH_OPERATIONS.contains(operation)?operation:null;
         }
         if(method.equals("POST") && path.equals("/api/questions"))return "question-create";
+        if(method.equals("POST") && path.equals("/api/contact"))return "contact";
         if(method.equals("POST") && path.matches("/api/questions/[^/]+/answers"))return "answer-create";
         if(method.equals("POST") && path.matches("/api/questions/[^/]+/admin-answers"))return "admin-answer-create";
         if((method.equals("PUT") && path.matches("/api/questions/[^/]+/like")) || (method.equals("POST") && path.matches("/api/questions/[^/]+/views")))return "interaction";

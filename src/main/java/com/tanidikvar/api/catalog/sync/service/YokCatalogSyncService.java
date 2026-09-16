@@ -4,6 +4,7 @@ import com.tanidikvar.api.catalog.sync.client.YokAtlasClient;
 import com.tanidikvar.api.catalog.sync.dto.YokCatalogSyncResponse;
 import com.tanidikvar.api.common.error.DomainException;
 import java.util.UUID;
+import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -36,6 +37,7 @@ public class YokCatalogSyncService {
     }
 
     public YokCatalogSyncResponse get(UUID id){return persistence.get(id);}
+    public List<YokCatalogSyncResponse> history(){return persistence.history();}
 
     private void execute(UUID id,String operation){
         try{
