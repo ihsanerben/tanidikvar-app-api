@@ -26,13 +26,14 @@ import tools.jackson.databind.ObjectMapper;
 public class SecurityConfiguration {
     @Bean
     SecurityFilterChain security(HttpSecurity http, ObjectMapper mapper, @Qualifier("corsConfigurationSource") CorsConfigurationSource corsSource,
-            @Value("${app.secure-cookies}") boolean secure, AuthenticationService authentication, AuthCookies cookies, AuthRateLimiter limiter) throws Exception {
+            @Value("${app.secure-cookies}") boolean secure, AuthenticationService authentication, AuthCookies cookies, AuthRateLimiter limiter,
+            ClientAddressResolver addresses) throws Exception {
         var csrfRepository = CookieCsrfTokenRepository.withHttpOnlyFalse();
         csrfRepository.setCookieCustomizer(cookie -> cookie.secure(secure).sameSite("Lax").path("/"));
         return http.cors(cors -> cors.configurationSource(corsSource))
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
-                .addFilterAfter(new AuthRateLimitFilter(limiter, mapper), CsrfFilter.class)
+                .addFilterAfter(new AuthRateLimitFilter(limiter, addresses, mapper), CsrfFilter.class)
                 .addFilterAfter(new CookieAuthenticationFilter(authentication, cookies, mapper), AuthRateLimitFilter.class)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .requestCache(AbstractHttpConfigurer::disable)

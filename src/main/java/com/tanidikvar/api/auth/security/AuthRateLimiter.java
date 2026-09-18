@@ -11,10 +11,11 @@ public class AuthRateLimiter {
     private record Policy(int limit, Duration period) { }
     private final Map<String, Window> windows = new HashMap<>();
     private final Clock clock;
+    private long requests;
     public AuthRateLimiter(Clock clock) { this.clock = clock; }
     public synchronized long retryAfter(String address, String operation) {
         Instant now = clock.instant();
-        windows.entrySet().removeIf(entry -> !entry.getValue().expiresAt().isAfter(now));
+        if ((requests++ & 255) == 0) windows.entrySet().removeIf(entry -> !entry.getValue().expiresAt().isAfter(now));
         String key = address + ":" + operation;
         Policy policy=policy(operation);
         Window old = windows.get(key);
@@ -28,6 +29,8 @@ public class AuthRateLimiter {
             case "refresh" -> new Policy(60,Duration.ofMinutes(1));
             case "question-create" -> new Policy(30,Duration.ofMinutes(15));
             case "answer-create", "admin-answer-create" -> new Policy(60,Duration.ofMinutes(15));
+            case "contact", "report", "verification" -> new Policy(10,Duration.ofMinutes(15));
+            case "content-write" -> new Policy(120,Duration.ofMinutes(15));
             case "interaction", "read" -> new Policy(240,Duration.ofMinutes(1));
             case "manager-write" -> new Policy(120,Duration.ofMinutes(15));
             default -> new Policy(10,Duration.ofMinutes(15));

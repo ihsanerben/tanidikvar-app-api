@@ -62,7 +62,7 @@ curl -fsS https://api.tanidikvar.online/api/health
 3. Web reposundaki Vercel rewrite hedefini Render adresinden
    `https://api.tanidikvar.online` adresine değiştir ve Vercel deployunu yap.
 4. Tarayıcıdan kayıt, doğrulama e-postası, giriş, sayfa yenileme, çıkış ve
-   dosyasız/dosyalı Admin başvurusunu dene.
+   yeni dosya yüklemesi içermeyen Tanıdık başvurusunu dene.
 5. Sorun varsa Vercel rewrite'ını tekrar Render adresine al; Neon ve Resend
    değişmediği için geri dönüş yalnız bu yönlendirmedir.
 

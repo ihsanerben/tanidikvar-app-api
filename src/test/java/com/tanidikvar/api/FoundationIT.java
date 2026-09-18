@@ -157,6 +157,21 @@ class FoundationIT {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1))
                 .andExpect(jsonPath("$.items[0].educationId").value(education.toString()))
                 .andExpect(jsonPath("$.items[0].currentBestRank").value(28226));
+        mvc.perform(get("/api/catalog-programs").param("programName","Görsel İletişim").param("universityName","Örnek"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/catalog-programs").param("programName","Tıp").param("universityName","Örnek"))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/universities/{id}",university))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.programCount").value(1))
+                .andExpect(jsonPath("$.questionCount").value(0));
+        UUID author=UUID.randomUUID(),question=UUID.randomUUID();
+        jdbc.update("INSERT INTO users(id,email,password_hash,created_at,updated_at) VALUES (?,'catalog-count@example.test','test',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)",author);
+        jdbc.update("INSERT INTO questions(id,author_id,request_id,title,scope,university_id) VALUES (?,?,?,'Üniversite hakkında soru','UNIVERSITY',?)",question,author,UUID.randomUUID(),university);
+        mvc.perform(get("/api/universities/{id}",university))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.questionCount").value(1));
+        jdbc.update("UPDATE questions SET archived_at=CURRENT_TIMESTAMP WHERE id=?",question);
+        mvc.perform(get("/api/universities/{id}",university))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.questionCount").value(0));
         mvc.perform(get("/api/catalog-programs/{id}",program))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.options[0].statistics[0].year").value(2025));
         mvc.perform(get("/api/statistics/overview"))

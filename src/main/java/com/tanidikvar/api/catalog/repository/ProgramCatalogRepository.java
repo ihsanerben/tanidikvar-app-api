@@ -23,6 +23,8 @@ public class ProgramCatalogRepository {
             """;
     private static final String FILTER="""
             AND (strpos(search_fold(p.display_name),search_fold(?))>0 OR strpos(search_fold(u.name),search_fold(?))>0 OR strpos(search_fold(coalesce(au.name,'')),search_fold(?))>0)
+            AND strpos(search_fold(p.display_name),search_fold(?))>0
+            AND strpos(search_fold(u.name),search_fold(?))>0
             AND (?='' OR search_fold(coalesce(u.city,''))=search_fold(?))
             AND (?='' OR u.institution_type=?) AND (?='' OR pf.degree_level=?)
             AND (?='' OR ao.score_type=?) AND (?::integer IS NULL OR ao.duration_years=?)
@@ -46,18 +48,18 @@ public class ProgramCatalogRepository {
             """;
     private static final String GROUP=" GROUP BY p.id,p.university_id,u.name,u.city,u.institution_type,p.display_name,pf.degree_level ";
 
-    public List<ProgramSummaryResponse> list(String query,String city,String type,String level,String scoreType,
+    public List<ProgramSummaryResponse> list(String query,String programName,String universityName,String city,String type,String level,String scoreType,
             Integer duration,Integer rankFrom,Integer rankTo,java.math.BigDecimal scoreFrom,java.math.BigDecimal scoreTo,Boolean filled,Integer year,String faculty,UUID universityId,int page,int size,String sort){
         String order=switch(sort){case "RANK"->"current_best_rank NULLS LAST,p.display_name";case "SCORE"->"current_minimum_score DESC NULLS LAST,p.display_name";case "QUOTA"->"current_quota DESC,p.display_name";default->"p.display_name,u.name";};
         return jdbc.query(SUMMARY+ACTIVE+FILTER+GROUP+" ORDER BY "+order+" LIMIT ? OFFSET ?",this::mapSummary,
-                params(query,city,type,level,scoreType,duration,rankFrom,rankTo,scoreFrom,scoreTo,filled,year,faculty,universityId,size,page*size));
+                params(query,programName,universityName,city,type,level,scoreType,duration,rankFrom,rankTo,scoreFrom,scoreTo,filled,year,faculty,universityId,size,page*size));
     }
-    public long count(String query,String city,String type,String level,String scoreType,Integer duration,Integer rankFrom,Integer rankTo,java.math.BigDecimal scoreFrom,java.math.BigDecimal scoreTo,Boolean filled,Integer year,String faculty,UUID universityId){
+    public long count(String query,String programName,String universityName,String city,String type,String level,String scoreType,Integer duration,Integer rankFrom,Integer rankTo,java.math.BigDecimal scoreFrom,java.math.BigDecimal scoreTo,Boolean filled,Integer year,String faculty,UUID universityId){
         return jdbc.queryForObject("SELECT count(DISTINCT p.id) "+ACTIVE+FILTER,Long.class,
-                params(query,city,type,level,scoreType,duration,rankFrom,rankTo,scoreFrom,scoreTo,filled,year,faculty,universityId));
+                params(query,programName,universityName,city,type,level,scoreType,duration,rankFrom,rankTo,scoreFrom,scoreTo,filled,year,faculty,universityId));
     }
-    private Object[] params(String q,String city,String type,String level,String score,Integer duration,Integer from,Integer to,java.math.BigDecimal scoreFrom,java.math.BigDecimal scoreTo,Boolean filled,Integer year,String faculty,UUID universityId,Object...tail){
-        List<Object> values=new ArrayList<>();values.add(year);values.addAll(List.of(q,q,q,city,city,type,type,level,level,score,score));
+    private Object[] params(String q,String programName,String universityName,String city,String type,String level,String score,Integer duration,Integer from,Integer to,java.math.BigDecimal scoreFrom,java.math.BigDecimal scoreTo,Boolean filled,Integer year,String faculty,UUID universityId,Object...tail){
+        List<Object> values=new ArrayList<>();values.add(year);values.addAll(List.of(q,q,q,programName,universityName,city,city,type,type,level,level,score,score));
         values.add(duration);values.add(duration);values.add(from);values.add(from);values.add(to);values.add(to);values.add(scoreFrom);values.add(scoreFrom);values.add(scoreTo);values.add(scoreTo);values.add(filled);values.add(Boolean.TRUE.equals(filled));values.add(Boolean.TRUE.equals(filled));values.add(faculty);values.add(faculty);values.add(universityId);values.add(universityId);
         values.addAll(Arrays.asList(tail));return values.toArray();
     }

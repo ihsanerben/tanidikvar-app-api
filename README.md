@@ -1,6 +1,6 @@
 # TanıdıkVar API
 
-Java 21 ve Spring Boot 4.1.1 tabanlı API. PostgreSQL şeması Flyway `V1`–`V18` migration’larıyla yönetilir.
+Java 21 ve Spring Boot 4.1.1 tabanlı API. PostgreSQL şeması Flyway migration’larıyla yönetilir; güncel sürüm için `src/main/resources/db/migration` dizinine bakılır.
 
 ## Çalıştırma
 
@@ -43,6 +43,6 @@ Migration katalog veya Manager hesabı oluşturmaz:
 
 ## Uygulanmış alanlar
 
-Auth/cookie JWT/CSRF, profil ve katalog, sorular, topluluk/Admin yorumları, başvurular, beğeni/görüntülenme, arama/Popülerler, Manager moderasyonu/raporları/audit uygulanmıştır. Güncel özet [ortak mevcut mimari](../docs/project/CURRENT_ARCHITECTURE.md), hedef kurallar [ürün planı](../docs/project/PRODUCT_PLAN.md), production ayarları [deployment rehberi](docs/PRODUCTION_DEPLOYMENT.md) içindedir.
+Uygulanmış alanlar [ortak mevcut mimaride](../docs/project/CURRENT_ARCHITECTURE.md), hedef kurallar [ürün planında](../docs/project/PRODUCT_PLAN.md), production ayarları [deployment rehberinde](docs/PRODUCTION_DEPLOYMENT.md) özetlenir.
 
 Eski endpoint dökümü ve test sayıları [arşivde](../docs/archive/API_README_HISTORY_2026-09-12.md) korunur. Gerçek API sözleşmesi kod ve üretilen OpenAPI çıktısıdır.

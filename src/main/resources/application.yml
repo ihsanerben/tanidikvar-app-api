@@ -59,6 +59,9 @@ app:
     resend-endpoint: ${RESEND_ENDPOINT:https://api.resend.com/emails}
   cors-origin: ${CORS_ALLOWED_ORIGIN:http://localhost:5173}
   secure-cookies: ${COOKIE_SECURE:true}
+  rate-limit:
+    # Only these direct peers may supply X-Forwarded-For. Keep empty when the API is reached directly.
+    trusted-proxies: ${RATE_LIMIT_TRUSTED_PROXIES:}
 springdoc:
   api-docs:
     enabled: false
