@@ -12,6 +12,8 @@ import com.tanidikvar.api.question.mapper.QuestionMapper;
 import com.tanidikvar.api.question.repository.QuestionRepository;
 import java.util.*;
 import java.time.Clock;
+import java.time.Duration;
+import java.time.ZoneId;
 import java.sql.Timestamp;
 import com.tanidikvar.api.common.dto.SearchQuery;
 import org.springframework.transaction.annotation.Isolation;
@@ -19,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 @Service
 public class QuestionService {
+    private static final ZoneId POPULAR_ZONE=ZoneId.of("Europe/Istanbul");
     private final com.tanidikvar.api.engagement.service.QuestionStatisticsService statistics;
     private final QuestionRepository questions;
     private final QuestionMapper mapper;
@@ -59,8 +62,9 @@ public class QuestionService {
         String cityQuery=SearchQuery.clean(city);if(!cityQuery.isEmpty())filters.put("city",cityQuery);
         if(answered!=null)filters.put("answered",answered);if(verifiedAnswer!=null)filters.put("verifiedAnswer",verifiedAnswer);
         if(period!=null) {
-            var until=clock.instant();filters.put("until",Timestamp.from(until));filters.put("since",Timestamp.from(until.minusSeconds(period.seconds())));
-            filters.put("seconds",period.seconds());filters.put("viewWeight",1);filters.put("likeWeight",5);filters.put("communityWeight",10);filters.put("adminWeight",25);
+            var until=clock.instant();var since=period.start(until,POPULAR_ZONE);
+            filters.put("until",Timestamp.from(until));filters.put("since",Timestamp.from(since));
+            filters.put("seconds",Math.max(1,Duration.between(since,until).toSeconds()));filters.put("viewWeight",1);filters.put("likeWeight",5);filters.put("communityWeight",10);filters.put("adminWeight",25);
         }
         String ordering=sort==null?"NEWEST":sort.toUpperCase(Locale.ROOT);if(period==null&&!Set.of("NEWEST","OLDEST","MOST_VIEWED","MOST_LIKED","MOST_COMMENTED").contains(ordering))throw new DomainException(400,"INVALID_SORT","Sıralama seçeneğini kontrol et.");
         var rows=period==null?questions.list(filters,ordering,page,size):questions.popular(filters,page,size);

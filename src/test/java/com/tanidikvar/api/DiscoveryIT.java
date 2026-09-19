@@ -23,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(DiscoveryIT.TimeConfiguration.class)
 class DiscoveryIT {
     static final Instant NOW=Instant.parse("2026-09-05T12:00:00Z");
+    static final ZoneId ISTANBUL=ZoneId.of("Europe/Istanbul");
     @TestConfiguration static class TimeConfiguration {@Bean @Primary Clock fixedClock(){return Clock.fixed(NOW,ZoneOffset.UTC);}}
     @Container static final PostgreSQLContainer postgres=new PostgreSQLContainer("postgres:17.9-alpine");
     @DynamicPropertySource static void configuration(DynamicPropertyRegistry p){p.add("spring.datasource.url",postgres::getJdbcUrl);p.add("spring.datasource.username",postgres::getUsername);p.add("spring.datasource.password",postgres::getPassword);p.add("app.auth.secret",()->Base64.getEncoder().encodeToString(new byte[48]));}
@@ -64,9 +65,9 @@ class DiscoveryIT {
         assertThat(ids(list("/api/questions",Map.of("q","' OR 1=1 --")))).isEmpty();
         assertThat(ids(list("/api/questions",Map.of("q","  "+group+"   %_  ")))).containsExactly(q.toString());
     }
-    @Test void windowsIncludeStartExcludeEndAndCardsKeepAllTimeCounts()throws Exception {
+    @Test void calendarPeriodsIncludeStartExcludeNowAndCardsKeepAllTimeCounts()throws Exception {
         UUID u=user();for(var period:com.tanidikvar.api.question.dto.PopularPeriod.values()){
-            String group=UUID.randomUUID().toString();UUID inside=question(u,group+" Sınır sorusu"),outside=question(u,group+" Dışarıdaki soru");Instant start=NOW.minusSeconds(period.seconds());
+            String group=UUID.randomUUID().toString();UUID inside=question(u,group+" Sınır sorusu"),outside=question(u,group+" Dışarıdaki soru");Instant start=period.start(NOW,ISTANBUL);
             view(inside,start);view(inside,start.minusMillis(1));view(outside,start.minusMillis(1));view(outside,NOW);view(outside,NOW.plusSeconds(1));
             var result=popular(group,period.name());assertThat(ids(result)).containsExactly(inside.toString());assertThat(result.get("totalElements").asInt()).isEqualTo(1);
             assertThat(result.get("items").get(0).get("statistics").get("viewCount").asLong()).isEqualTo(2);
@@ -80,7 +81,7 @@ class DiscoveryIT {
     @Test void halfWeightAtWindowStartAllowsOldQuestionWithNewActivityToRise()throws Exception {
         UUID u=user();String group=UUID.randomUUID().toString();UUID old=question(u,group+" Eski soru"),recent=question(u,group+" Yeni soru");
         jdbc.update("UPDATE questions SET created_at=? WHERE id=?",Timestamp.from(NOW.minusSeconds(86400L*400)),old);
-        like(recent,u,NOW.minusSeconds(86400));for(int i=0;i<3;i++)view(old,NOW.minusSeconds(1));
+        like(recent,u,com.tanidikvar.api.question.dto.PopularPeriod.DAILY.start(NOW,ISTANBUL));for(int i=0;i<3;i++)view(old,NOW.minusSeconds(1));
         assertThat(ids(popular(group,"DAILY"))).containsExactly(old.toString(),recent.toString());
         // The exact start contributes 5/2=2.5; two fresh views contribute just below 2.
         UUID two=question(u,group+" İki görüntülenme");view(two,NOW.minusSeconds(1));view(two,NOW.minusSeconds(1));
@@ -97,7 +98,7 @@ class DiscoveryIT {
         UUID u=user();String group=UUID.randomUUID().toString();UUID q=question(u,group+" Eski katkılar");like(q,u,NOW.minusSeconds(86400*8));UUID a=answer(q,u,null,NOW.minusSeconds(86400*8));
         jdbc.update("UPDATE question_likes SET deleted_at=CURRENT_TIMESTAMP WHERE question_id=?",q);jdbc.update("UPDATE question_likes SET deleted_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE question_id=?",q);
         jdbc.update("UPDATE answers SET body='Yeni düzenleme metni uzunluğu',edited_at=CURRENT_TIMESTAMP WHERE id=?",a);
-        assertThat(ids(popular(group,"WEEKLY"))).isEmpty();assertThat(ids(popular(group,"MONTHLY"))).containsExactly(q.toString());
+        assertThat(ids(popular(group,"WEEKLY"))).isEmpty();assertThat(ids(popular(group,"MONTHLY"))).isEmpty();assertThat(ids(popular(group,"YEARLY"))).containsExactly(q.toString());
     }
     @Test void paginationIsStableForTiesAndInvalidInputsReturn400()throws Exception {
         UUID u=user();String group=UUID.randomUUID().toString();var expected=new ArrayList<String>();for(int i=0;i<3;i++){UUID q=question(u,group+" Eşit puan "+i);view(q,NOW.minusSeconds(1));expected.add(q.toString());}expected.sort(Comparator.reverseOrder());
