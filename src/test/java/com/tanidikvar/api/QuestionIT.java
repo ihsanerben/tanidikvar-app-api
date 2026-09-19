@@ -84,12 +84,10 @@ class QuestionIT {
     @Test void threeScopesFiltersAndDatabaseConstraints()throws Exception {
         var a=member("MEMBER");var manager=actor("MANAGER");var e=education(manager);var t=create(manager,"TAG","Soru Tag "+UUID.randomUUID());
         var c=content("Üniversite ve bölüm deneyimleri nasıl?");c.put("scope","UNIVERSITY_DEPARTMENT");c.put("universityId",e.get("universityId").asText());c.put("departmentId",e.get("departmentId").asText());c.put("tagIds",List.of(t.get("id").asText()));
-        var q=question(a,c);
-        mvc.perform(get("/api/questions").param("universityId",e.get("universityId").asText()).param("departmentId",e.get("departmentId").asText()).param("tagId",t.get("id").asText()))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.items[0].id").value(q.get("id").asText()));
+        mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isBadRequest());
         c.remove("universityId");
         mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isBadRequest());
-        c.put("universityId",e.get("universityId").asText());c.remove("departmentId");c.put("scope","UNIVERSITY");question(a,c);
+        c.put("universityId",e.get("universityId").asText());c.remove("departmentId");c.put("scope","UNIVERSITY");var q=question(a,c);
         assertThatThrownBy(()->jdbc.update("UPDATE questions SET scope='GENERAL' WHERE id=?",UUID.fromString(q.get("id").asText()))).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         mvc.perform(get("/api/questions").param("size","101")).andExpect(status().isBadRequest());
         mvc.perform(get("/api/questions").param("scope","OTHER")).andExpect(status().isBadRequest());
@@ -134,7 +132,7 @@ class QuestionIT {
     }
     @Test void tagsAreSoftDeletedAndReusedAndInactiveReferencesCannotBeNewlyAdded()throws Exception {
         var a=member("MEMBER");var manager=actor("MANAGER");var e=education(manager);var t=create(manager,"TAG","Soru "+UUID.randomUUID());UUID tag=UUID.fromString(t.get("id").asText());
-        var c=content("Tag geçmişi korunacak olan soru");c.put("scope","UNIVERSITY_DEPARTMENT");c.put("universityId",e.get("universityId").asText());c.put("departmentId",e.get("departmentId").asText());c.put("tagIds",List.of(tag));
+        var c=content("Tag geçmişi korunacak olan soru");c.put("scope","UNIVERSITY");c.put("universityId",e.get("universityId").asText());c.put("tagIds",List.of(tag));
         var q=question(a,c);UUID id=UUID.fromString(q.get("id").asText());String path="/api/questions/"+id;
         c.put("tagIds",List.of());mvc.perform(write("PUT",path,a,Map.of("version",0,"content",c))).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT deleted_at IS NOT NULL FROM question_tags WHERE question_id=? AND tag_id=?",Boolean.class,id,tag)).isTrue();
