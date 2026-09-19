@@ -16,9 +16,8 @@ public class QuestionRepository {
         LEFT JOIN stored_files f ON f.owner_id=a.id AND f.purpose='AVATAR' AND f.upload_status='READY' AND f.deleted_at IS NULL
         LEFT JOIN universities u ON u.id=q.university_id
         LEFT JOIN departments d ON d.id=q.department_id
-        LEFT JOIN programs np ON np.id=q.program_id
         """;
-    private static final String SELECT="SELECT q.*,concat_ws(' ',p.first_name,p.last_name) author_name,u.name university_name,coalesce(np.display_name,d.name) department_name,f.id avatar_file_id,p.education_status,(a.authority='TANIDIK' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=a.active_verification_application_id AND v.applicant_id=a.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin "+FROM;
+    private static final String SELECT="SELECT q.*,concat_ws(' ',p.first_name,p.last_name) author_name,u.name university_name,d.name department_name,f.id avatar_file_id,p.education_status,(a.authority='TANIDIK' AND EXISTS(SELECT 1 FROM admin_applications v WHERE v.id=a.active_verification_application_id AND v.applicant_id=a.id AND v.status='APPROVED' AND v.deleted_at IS NULL)) active_admin "+FROM;
     private Instant time(ResultSet r,String key)throws SQLException { var t=r.getTimestamp(key);return t==null?null:t.toInstant(); }
     private Question map(ResultSet r,int n)throws SQLException {
         String name=r.getString("author_name");
