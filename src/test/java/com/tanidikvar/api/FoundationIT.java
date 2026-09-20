@@ -104,7 +104,7 @@ class FoundationIT {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"))
                 .andExpect(jsonPath("$.database").value("up"))
                 .andExpect(header().exists("X-Request-ID"));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(46);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(52);
         assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM information_schema.tables
                 WHERE table_schema='public' AND table_name IN
@@ -135,12 +135,12 @@ class FoundationIT {
                 VALUES (?,?,?,'Görsel İletişim Tasarımı','görsel iletişim tasarımı')
                 """,program,university,family);
         jdbc.update("""
-                INSERT INTO admission_options(id,program_id,academic_unit_id,guide_code,score_type,education_type,language,duration_years)
-                VALUES (?,?,?,'105490029','SÖZ','Örgün Öğretim','Türkçe',4)
+                INSERT INTO admission_options(id,program_id,academic_unit_id,guide_code,score_type,education_type,language,scholarship,duration_years)
+                VALUES (?,?,?,'105490029','SÖZ','Örgün Öğretim','Türkçe','Burslu',4)
                 """,option,program,unit);
         jdbc.update("""
                 INSERT INTO admission_statistics(admission_option_id,guide_year,quota,placed,minimum_score,success_rank,source_payload_checksum)
-                VALUES (?,2025,55,55,370.09443,28226,?)
+                VALUES (?,2026,55,55,370.09443,28226,?)
                 """,option,checksum);
         jdbc.update("INSERT INTO departments(id,name,normalized_name) VALUES (?,'Görsel İletişim Tasarımı','görsel iletişim tasarımı')",department);
         jdbc.update("INSERT INTO university_departments(id,university_id,department_id,program_id) VALUES (?,?,?,?)",education,university,department,program);
@@ -150,7 +150,7 @@ class FoundationIT {
                 JOIN admission_options option ON option.id=stats.admission_option_id
                 JOIN programs program ON program.id=option.program_id
                 JOIN academic_units unit ON unit.id=option.academic_unit_id
-                WHERE program.id=? AND stats.guide_year=2025 AND unit.district='ÜSKÜDAR'
+                WHERE program.id=? AND stats.guide_year=2026 AND unit.district='ÜSKÜDAR'
                 """,Integer.class,program)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT program_id FROM university_departments WHERE id=?",UUID.class,education)).isEqualTo(program);
         mvc.perform(get("/api/catalog-programs").param("universityId",university.toString()).param("scoreType","SÖZ"))
@@ -173,7 +173,11 @@ class FoundationIT {
         mvc.perform(get("/api/universities/{id}",university))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.questionCount").value(0));
         mvc.perform(get("/api/catalog-programs/{id}",program))
-                .andExpect(status().isOk()).andExpect(jsonPath("$.options[0].statistics[0].year").value(2025));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.options[0].language").value("Türkçe"))
+                .andExpect(jsonPath("$.options[0].scholarship").value("Burslu"))
+                .andExpect(jsonPath("$.options[0].educationType").value("Örgün Öğretim"))
+                .andExpect(jsonPath("$.options[0].statistics[0].year").value(2026));
         mvc.perform(get("/api/statistics/overview"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$.programCount").value(1));
         mvc.perform(get("/api/universities/{id}/catalog-statistics",university))
@@ -189,10 +193,13 @@ class FoundationIT {
                 VALUES (?,'Örnek Üniversitesi','örnek üniversitesi','Manager açıklaması','/logo.svg','#123456')
                 """,university);
         var stats=new YokAtlasYearStats(2025,80,79,new BigDecimal("510.12345"),1200,"b".repeat(64));
-        var program=new YokAtlasProgram(88079L,377415,"105490029",173496,"Örnek Üniversitesi","DEVLET","İSTANBUL",
+        var program=new YokAtlasProgram(88079L,377415L,"105490029",173496,"Örnek Üniversitesi","DEVLET","İSTANBUL",
                 292945L,"Mühendislik Fakültesi",null,"İSTANBUL","ÜSKÜDAR",4001,"Bilgisayar Mühendisliği",
                 "Bilgisayar Mühendisliği (İngilizce)","LISANS","SAY","Örgün Öğretim","İngilizce",null,4,java.util.List.of(stats));
-        var snapshot=new YokAtlasSnapshot("c".repeat(64),null,java.util.List.of(program));
+        var netStats=new com.tanidikvar.api.catalog.sync.model.YokAtlasNetStats("105490029",2025,
+                new BigDecimal("510.12345"),new BigDecimal("480.50"),new BigDecimal("0.12"),
+                new BigDecimal("32.5"),null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,"f".repeat(64),"{}");
+        var snapshot=new YokAtlasSnapshot("c".repeat(64),null,java.util.List.of(program),java.util.List.of(netStats));
         UUID first=UUID.randomUUID(),second=UUID.randomUUID();
         yokSyncRepository.start(first,null,"APPLY");
         yokSyncPersistence.apply(first,snapshot);
@@ -204,6 +211,11 @@ class FoundationIT {
         assertThat(jdbc.queryForMap("SELECT description,logo_url,accent_primary FROM universities WHERE id=?",university))
                 .containsEntry("description","Manager açıklaması").containsEntry("logo_url","/logo.svg").containsEntry("accent_primary","#123456");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admission_options WHERE guide_code='105490029'",Integer.class)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("""
+                SELECT s.tyt_turkish_net FROM admission_statistics s
+                JOIN admission_options ao ON ao.id=s.admission_option_id
+                WHERE ao.guide_code='105490029' AND s.guide_year=2025
+                """,BigDecimal.class)).isEqualByComparingTo("32.5");
     }
 
     @Test
@@ -215,7 +227,7 @@ class FoundationIT {
                 VALUES (?,'Örnek Üniversitesi','örnek üniversitesi','MANUAL')
                 """,manualUniversity);
         var current=new YokAtlasYearStats(2025,80,79,new BigDecimal("510.12345"),null,"d".repeat(64));
-        var program=new YokAtlasProgram(88079L,377415,"105490029",173496,"Örnek Üniversitesi","DEVLET","İSTANBUL",
+        var program=new YokAtlasProgram(88079L,377415L,"105490029",173496,"Örnek Üniversitesi","DEVLET","İSTANBUL",
                 null,null,null,"İSTANBUL","ÜSKÜDAR",4001,"Bilgisayar Mühendisliği",
                 "Bilgisayar Mühendisliği","LISANS","SAY","Örgün Öğretim","İngilizce",null,4,java.util.List.of(current));
         var snapshot=new YokAtlasSnapshot("e".repeat(64),null,java.util.List.of(program));

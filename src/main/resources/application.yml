@@ -43,9 +43,9 @@ app:
   pilot-mode: ${PILOT_MODE:false}
   storage-directory: ${STORAGE_DIRECTORY:.local/storage}
   catalog:
-    programs-csv-url: ${PROGRAMS_CSV_URL:https://raw.githubusercontent.com/cngil/turkiye-university-programs/main/data/programs.csv}
-    programs-csv-max-bytes: ${PROGRAMS_CSV_MAX_BYTES:104857600}
-    programs-csv-timeout: ${PROGRAMS_CSV_TIMEOUT:120s}
+    yok-atlas-base-url: ${YOK_ATLAS_BASE_URL:https://yokatlas.yok.gov.tr/api}
+    yok-atlas-page-size: ${YOK_ATLAS_PAGE_SIZE:500}
+    yok-atlas-timeout: ${YOK_ATLAS_TIMEOUT:120s}
   auth:
     secret: ${JWT_SECRET}
     access-ttl: ${JWT_ACCESS_TTL:15m}

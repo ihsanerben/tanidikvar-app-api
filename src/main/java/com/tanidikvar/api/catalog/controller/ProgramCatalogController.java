@@ -18,7 +18,7 @@ public class ProgramCatalogController {
             @RequestParam(defaultValue="")String scoreType,@RequestParam(required=false)Integer durationYears,
             @RequestParam(required=false)Integer rankFrom,@RequestParam(required=false)Integer rankTo,
             @RequestParam(required=false)java.math.BigDecimal scoreFrom,@RequestParam(required=false)java.math.BigDecimal scoreTo,
-            @RequestParam(required=false)Boolean filled,@RequestParam(defaultValue="2025")Integer year,
+            @RequestParam(required=false)Boolean filled,@RequestParam(defaultValue="2026")Integer year,
             @RequestParam(defaultValue="")String faculty,@RequestParam(required=false)UUID universityId,
             @RequestParam(defaultValue="NAME")String sort,@RequestParam(defaultValue="0")int page,
             @RequestParam(defaultValue="20")int size){return service.list(q,programName,universityName,city,institutionType,degreeLevel,scoreType,durationYears,rankFrom,rankTo,scoreFrom,scoreTo,filled,year,faculty,universityId,sort,page,size);}

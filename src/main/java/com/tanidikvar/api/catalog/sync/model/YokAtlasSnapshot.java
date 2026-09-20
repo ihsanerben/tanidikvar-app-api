@@ -6,4 +6,9 @@ import java.util.List;
 public record YokAtlasSnapshot(
         String checksum,
         Instant sourceUpdatedAt,
-        List<YokAtlasProgram> programs) { }
+        List<YokAtlasProgram> programs,
+        List<YokAtlasNetStats> netStatistics) {
+    public YokAtlasSnapshot(String checksum,Instant sourceUpdatedAt,List<YokAtlasProgram> programs) {
+        this(checksum,sourceUpdatedAt,programs,List.of());
+    }
+}

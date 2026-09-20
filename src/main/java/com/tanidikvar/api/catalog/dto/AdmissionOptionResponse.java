@@ -4,4 +4,6 @@ import java.util.List;
 import java.util.UUID;
 
 public record AdmissionOptionResponse(UUID id,String programCode,String faculty,String scoreType,
-        Integer durationYears,List<AdmissionStatisticsResponse> statistics) { }
+        String educationType,String language,String scholarship,String specialQuotaType,Integer durationYears,
+        java.math.BigDecimal annualFee,
+        List<AdmissionStatisticsResponse> statistics) { }
