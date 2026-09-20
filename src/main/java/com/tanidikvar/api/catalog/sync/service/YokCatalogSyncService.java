@@ -56,7 +56,8 @@ public class YokCatalogSyncService {
             String reason=exception instanceof IllegalStateException&&exception.getMessage()!=null
                     ?exception.getMessage():"Program veri setine erişilemedi.";
             persistence.fail(id,reason.length()>2000?reason.substring(0,2000):reason);
-            log.warn("dataset_catalog_sync_failed runId={} type={}",id,exception.getClass().getSimpleName());
+            log.warn("dataset_catalog_sync_failed runId={} type={} message={}",id,
+                    exception.getClass().getSimpleName(),exception.getMessage(),exception);
         }catch(OutOfMemoryError error){
             try{persistence.fail(id,"Senkronizasyon bellek güvenlik sınırını aştı.");}
             catch(RuntimeException ignored){log.error("dataset_catalog_sync_oom_status_update_failed runId={}",id);}

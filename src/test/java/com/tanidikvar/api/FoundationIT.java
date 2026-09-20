@@ -224,6 +224,25 @@ class FoundationIT {
 
     @Test
     @org.springframework.transaction.annotation.Transactional
+    void yokCatalogNetStageKeepsTheLastDuplicateScenario() {
+        UUID runId=UUID.randomUUID();
+        var first=new com.tanidikvar.api.catalog.sync.model.YokAtlasNetStats("105490029",2025,
+                new BigDecimal("510.1"),new BigDecimal("480"),new BigDecimal("0.12"),
+                new BigDecimal("30.5"),null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,"a".repeat(64),"{\"scenario\":1}");
+        var last=new com.tanidikvar.api.catalog.sync.model.YokAtlasNetStats("105490029",2025,
+                new BigDecimal("510.1"),new BigDecimal("490"),new BigDecimal("0.12"),
+                new BigDecimal("33.5"),null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,"b".repeat(64),"{\"scenario\":2}");
+
+        yokSyncRepository.start(runId,null,"APPLY");
+        yokSyncRepository.stageNets(runId,0,java.util.List.of(first));
+        yokSyncRepository.stageNets(runId,1,java.util.List.of(last));
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM yok_catalog_net_stage WHERE run_id=?",Integer.class,runId)).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT payload->>'tytTurkish' FROM yok_catalog_net_stage WHERE run_id=?",String.class,runId)).isEqualTo("33.5");
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
     void yokCatalogPreviewReportsQualityWithoutWritingCatalogRows() {
         UUID manualUniversity=UUID.randomUUID(),runId=UUID.randomUUID();
         jdbc.update("""

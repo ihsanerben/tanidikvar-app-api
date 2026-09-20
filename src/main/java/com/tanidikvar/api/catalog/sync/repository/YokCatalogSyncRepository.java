@@ -56,7 +56,11 @@ public class YokCatalogSyncRepository {
     public void stageNets(UUID id,int offset,List<YokAtlasNetStats> rows) {
         List<Object[]> args=new java.util.ArrayList<>(rows.size());
         for(int index=0;index<rows.size();index++){var row=rows.get(index);args.add(new Object[]{id,offset+index,row.guideCode(),row.year(),json.writeValueAsString(row)});}
-        jdbc.batchUpdate("INSERT INTO yok_catalog_net_stage(run_id,row_number,guide_code,guide_year,payload) VALUES (?,?,?,?,?::jsonb)",args);
+        jdbc.batchUpdate("""
+                INSERT INTO yok_catalog_net_stage(run_id,row_number,guide_code,guide_year,payload)
+                VALUES (?,?,?,?,?::jsonb)
+                ON CONFLICT (run_id,guide_code,guide_year) DO UPDATE SET payload=excluded.payload
+                """,args);
         heartbeat(id);
     }
 
