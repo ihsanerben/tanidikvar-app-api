@@ -6,6 +6,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.time.Duration;
 import java.util.*;
+import java.util.function.Consumer;
 import org.springframework.beans.factory.annotation.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
@@ -38,32 +39,36 @@ public class YokAtlasClient {
                 .build();
     }
 
-    public YokAtlasSnapshot fetchCompleteSnapshot(){
+    public YokAtlasFetchResult fetch(Consumer<List<YokAtlasProgram>> programSink,
+            Consumer<List<YokAtlasNetStats>> netSink,boolean includeNets){
         int activeYear=plainInt("/parameters/yil");
         plainInt("/parameters/sonuc-aciklandi");
         Set<Long> officialUniversities=idSet(getArray("/tercih-kilavuz/universiteler"),"universiteId");
         Set<Long> officialGroups=idSet(getArray("/tercih-kilavuz/universite-programlar"),"birimGrupId");
         getArray("/tercih-kilavuz/universite-iller");
-        List<JsonNode> rows=new ArrayList<>();Integer expectedTotal=null,guideYear=null;
+        MessageDigest digest=digest();
+        update(digest,"schemaVersion=3|year="+activeYear+"\n");
+        Set<String> guideCodes=new HashSet<>();Integer expectedTotal=null,guideYear=null;int programCount=0;
         for(int page=0;;page++){
             JsonNode response=search(page);int total=requiredInt(response,"totalElements"),pages=requiredInt(response,"totalPages"),year=requiredInt(response,"yil");
             if(total<1||total>MAX_OPTIONS||pages<1)throw changed("gecersiz toplam veya sayfa sayisi");
             if(year!=activeYear)throw changed("aktif yil ile katalog yili uyusmuyor");
             if(expectedTotal==null){expectedTotal=total;guideYear=year;}else if(expectedTotal!=total||guideYear!=year)throw changed("sayfalama sirasinda snapshot degisti");
-            JsonNode content=response.get("content");if(content==null||!content.isArray())throw changed("content dizi degil");content.forEach(rows::add);
+            JsonNode content=response.get("content");if(content==null||!content.isArray())throw changed("content dizi degil");
+            List<YokAtlasProgram> batch=new ArrayList<>(content.size());
+            for(JsonNode row:content){
+                YokAtlasProgram program=program(row);
+                if(!officialUniversities.contains(program.universityId()))throw changed("universite referans listesinde yok: "+program.universityId());
+                Long group=nullableId(row,"birimGrupId");if(group!=null&&!officialGroups.contains(group))throw changed("program referans listesinde yok: "+group);
+                if(!guideCodes.add(program.guideCode()))throw changed("yinelenen kilavuzKodu: "+program.guideCode());
+                update(digest,"P|");update(digest,program.sourcePayload());update(digest,"\n");batch.add(program);
+            }
+            programSink.accept(List.copyOf(batch));programCount+=batch.size();
             if(page+1>=pages)break;
         }
-        if(expectedTotal==null||rows.size()!=expectedTotal)throw changed("tum kayitlar indirilemedi");
-        Map<String,YokAtlasProgram> programs=new LinkedHashMap<>();
-        for(JsonNode row:rows){
-            YokAtlasProgram program=program(row);
-            if(!officialUniversities.contains(program.universityId()))throw changed("universite referans listesinde yok: "+program.universityId());
-            Long group=nullableId(row,"birimGrupId");if(group!=null&&!officialGroups.contains(group))throw changed("program referans listesinde yok: "+group);
-            if(programs.putIfAbsent(program.guideCode(),program)!=null)throw changed("yinelenen kilavuzKodu: "+program.guideCode());
-        }
-        List<YokAtlasNetStats> nets=fetchNetStatistics();
-        byte[] checksumPayload=json.writeValueAsBytes(Map.of("programs",rows,"nets",nets,"year",activeYear,"schemaVersion",2));
-        return new YokAtlasSnapshot(sha256(checksumPayload),null,List.copyOf(programs.values()),nets);
+        if(expectedTotal==null||programCount!=expectedTotal)throw changed("tum kayitlar indirilemedi");
+        int netCount=includeNets?fetchNetStatistics(netSink,digest):0;
+        return new YokAtlasFetchResult(HexFormat.of().formatHex(digest.digest()),programCount,netCount);
     }
     private JsonNode getArray(String path){
         try{JsonNode value=json.readTree(client.get().uri(baseUrl+path).retrieve().body(String.class));if(value==null||!value.isArray()||value.isEmpty())throw changed("bos referans listesi: "+path);return value;}
@@ -74,18 +79,20 @@ public class YokAtlasClient {
         catch(RuntimeException e){throw new IllegalStateException("YOK Atlas parametresi indirilemedi: "+path,e);}
     }
     private static Set<Long> idSet(JsonNode rows,String field){Set<Long> result=new HashSet<>();rows.forEach(row->result.add(requiredLong(row,field)));return result;}
-    private List<YokAtlasNetStats> fetchNetStatistics(){
-        List<YokAtlasNetStats> result=new ArrayList<>();Integer expectedTotal=null;
+    private int fetchNetStatistics(Consumer<List<YokAtlasNetStats>> sink,MessageDigest digest){
+        Integer expectedTotal=null;int count=0;
         for(int page=0;;page++){
             JsonNode response=post(netSearchUrl,page);int total=requiredInt(response,"totalElements"),pages=requiredInt(response,"totalPages");
             if(total<1||total>300_000||pages<1)throw changed("netler toplam veya sayfa sayisi gecersiz");
             if(expectedTotal==null)expectedTotal=total;else if(expectedTotal!=total)throw changed("netler sayfalama sirasinda degisti");
             JsonNode content=response.get("content");if(content==null||!content.isArray())throw changed("netler content dizi degil");
-            content.forEach(row->result.add(netStats(row)));
+            List<YokAtlasNetStats> batch=new ArrayList<>(content.size());
+            for(JsonNode row:content){YokAtlasNetStats stats=netStats(row);update(digest,"N|");update(digest,stats.sourcePayload());update(digest,"\n");batch.add(stats);}
+            sink.accept(List.copyOf(batch));count+=batch.size();
             if(page+1>=pages)break;
         }
-        if(expectedTotal==null||result.size()!=expectedTotal)throw changed("tum net kayitlari indirilemedi");
-        return List.copyOf(result);
+        if(expectedTotal==null||count!=expectedTotal)throw changed("tum net kayitlari indirilemedi");
+        return count;
     }
     private YokAtlasNetStats netStats(JsonNode row){
         String payload=row.toString();return new YokAtlasNetStats(requiredText(row,"kilavuzKodu"),requiredInt(row,"yil"),decimal(row,"tabanPuan"),decimal(row,"obp"),decimal(row,"katsayi"),
@@ -137,5 +144,7 @@ public class YokAtlasClient {
         return 8_000_000_000_000_000_000L+Long.parseLong(hash.substring(0,15),16);
     }
     private static IllegalStateException changed(String detail){return new IllegalStateException("YOK Atlas JSON sozlesmesi degisti: "+detail+"; katalog degistirilmedi.");}
+    private static MessageDigest digest(){try{return MessageDigest.getInstance("SHA-256");}catch(Exception e){throw new IllegalStateException("SHA-256 kullanilamiyor.",e);}}
+    private static void update(MessageDigest digest,String value){digest.update(value.getBytes(StandardCharsets.UTF_8));}
     private static String sha256(byte[] value){try{return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value));}catch(Exception e){throw new IllegalStateException("SHA-256 kullanilamiyor.",e);}}
 }

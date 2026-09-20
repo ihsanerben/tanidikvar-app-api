@@ -2,6 +2,11 @@ package com.tanidikvar.api.catalog.sync.service;
 
 import com.tanidikvar.api.catalog.sync.dto.YokCatalogSyncResponse;
 import com.tanidikvar.api.catalog.sync.model.YokAtlasSnapshot;
+import com.tanidikvar.api.catalog.sync.model.YokAtlasFetchResult;
+import com.tanidikvar.api.catalog.sync.model.YokAtlasProgram;
+import com.tanidikvar.api.catalog.sync.model.YokAtlasNetStats;
+import java.time.Duration;
+import java.time.Instant;
 import com.tanidikvar.api.catalog.sync.repository.YokCatalogSyncRepository;
 import com.tanidikvar.api.common.error.DomainException;
 import java.util.UUID;
@@ -13,11 +18,28 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class YokCatalogSyncPersistence {
     private final YokCatalogSyncRepository repository;
-    public YokCatalogSyncPersistence(YokCatalogSyncRepository repository){this.repository=repository;}
+    private final Duration staleAfter;
+    public YokCatalogSyncPersistence(YokCatalogSyncRepository repository,
+            @org.springframework.beans.factory.annotation.Value("${app.catalog.yok-atlas-stale-after:6h}") Duration staleAfter){this.repository=repository;this.staleAfter=staleAfter;}
 
     @Transactional(propagation=Propagation.REQUIRES_NEW)
     public YokCatalogSyncResponse start(UUID actor,String operation){
+        repository.failStaleRuns(Instant.now().minus(staleAfter));
         UUID id=UUID.randomUUID();repository.start(id,actor,operation);return get(id);
+    }
+
+    @Transactional(propagation=Propagation.REQUIRES_NEW)
+    public void stagePrograms(UUID id,int offset,List<YokAtlasProgram> rows){repository.stagePrograms(id,offset,rows);}
+    @Transactional(propagation=Propagation.REQUIRES_NEW)
+    public void stageNets(UUID id,int offset,List<YokAtlasNetStats> rows){repository.stageNets(id,offset,rows);}
+
+    @Transactional
+    public void finish(UUID id,String operation,YokAtlasFetchResult result){
+        if(!"STARTED".equals(repository.lockStatus(id)))return;
+        if("APPLY".equals(operation)&&repository.successfulSnapshotExists(result.checksum())){
+            repository.skipStaged(id,result);return;
+        }
+        if("PREVIEW".equals(operation))repository.previewStaged(id,result);else repository.applyStaged(id,result);
     }
 
     @Transactional(readOnly=true)
@@ -41,5 +63,5 @@ public class YokCatalogSyncPersistence {
     }
 
     @Transactional(propagation=Propagation.REQUIRES_NEW)
-    public void fail(UUID id,String reason){repository.fail(id,reason);}
+    public void fail(UUID id,String reason){repository.fail(id,reason);repository.clearStage(id);}
 }

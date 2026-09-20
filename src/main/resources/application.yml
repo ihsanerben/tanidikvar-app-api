@@ -46,6 +46,9 @@ app:
     yok-atlas-base-url: ${YOK_ATLAS_BASE_URL:https://yokatlas.yok.gov.tr/api}
     yok-atlas-page-size: ${YOK_ATLAS_PAGE_SIZE:500}
     yok-atlas-timeout: ${YOK_ATLAS_TIMEOUT:120s}
+    # A crashed worker releases its database-backed sync reservation after this period.
+    # Keep this safely above the longest expected production import.
+    yok-atlas-stale-after: ${YOK_ATLAS_STALE_AFTER:6h}
   auth:
     secret: ${JWT_SECRET}
     access-ttl: ${JWT_ACCESS_TTL:15m}

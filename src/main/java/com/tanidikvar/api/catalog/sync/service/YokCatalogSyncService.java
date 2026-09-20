@@ -5,6 +5,8 @@ import com.tanidikvar.api.catalog.sync.dto.YokCatalogSyncResponse;
 import com.tanidikvar.api.common.error.DomainException;
 import java.util.UUID;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -30,7 +32,9 @@ public class YokCatalogSyncService {
     public YokCatalogSyncResponse preview(UUID actor){return schedule(actor,"PREVIEW");}
 
     private YokCatalogSyncResponse schedule(UUID actor,String operation){
-        YokCatalogSyncResponse run=persistence.start(actor,operation);
+        YokCatalogSyncResponse run;
+        try{run=persistence.start(actor,operation);}
+        catch(DataIntegrityViolationException exception){throw new DomainException(409,"CATALOG_SYNC_RUNNING","Başka bir katalog senkronizasyonu çalışıyor.");}
         try{executor.execute(()->execute(run.id(),operation));}
         catch(RuntimeException exception){persistence.fail(run.id(),"Başka bir katalog senkronizasyonu çalışıyor.");throw new DomainException(409,"CATALOG_SYNC_RUNNING","Başka bir katalog senkronizasyonu çalışıyor.");}
         return run;
@@ -41,14 +45,22 @@ public class YokCatalogSyncService {
 
     private void execute(UUID id,String operation){
         try{
-            var snapshot=client.fetchCompleteSnapshot();
-            if("PREVIEW".equals(operation))persistence.preview(id,snapshot);else persistence.apply(id,snapshot);
-            log.info("dataset_catalog_sync_completed runId={} operation={} options={}",id,operation,snapshot.programs().size());
+            AtomicInteger programOffset=new AtomicInteger(),netOffset=new AtomicInteger();
+            var result=client.fetch(
+                    rows->{int offset=programOffset.getAndAdd(rows.size());persistence.stagePrograms(id,offset,rows);},
+                    rows->{int offset=netOffset.getAndAdd(rows.size());persistence.stageNets(id,offset,rows);},
+                    "APPLY".equals(operation));
+            persistence.finish(id,operation,result);
+            log.info("dataset_catalog_sync_completed runId={} operation={} options={} nets={}",id,operation,result.programCount(),result.netCount());
         }catch(RuntimeException exception){
             String reason=exception instanceof IllegalStateException&&exception.getMessage()!=null
                     ?exception.getMessage():"Program veri setine erişilemedi.";
             persistence.fail(id,reason.length()>2000?reason.substring(0,2000):reason);
             log.warn("dataset_catalog_sync_failed runId={} type={}",id,exception.getClass().getSimpleName());
+        }catch(OutOfMemoryError error){
+            try{persistence.fail(id,"Senkronizasyon bellek güvenlik sınırını aştı.");}
+            catch(RuntimeException ignored){log.error("dataset_catalog_sync_oom_status_update_failed runId={}",id);}
+            log.error("dataset_catalog_sync_oom runId={}",id);
         }
     }
 }

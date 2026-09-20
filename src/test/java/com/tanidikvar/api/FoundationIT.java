@@ -3,6 +3,7 @@ package com.tanidikvar.api;
 import com.tanidikvar.api.catalog.sync.model.YokAtlasProgram;
 import com.tanidikvar.api.catalog.sync.model.YokAtlasSnapshot;
 import com.tanidikvar.api.catalog.sync.model.YokAtlasYearStats;
+import com.tanidikvar.api.catalog.sync.model.YokAtlasFetchResult;
 import com.tanidikvar.api.catalog.sync.repository.YokCatalogSyncRepository;
 import com.tanidikvar.api.catalog.sync.service.YokCatalogSyncPersistence;
 import java.math.BigDecimal;
@@ -104,7 +105,7 @@ class FoundationIT {
                 .andExpect(status().isOk()).andExpect(jsonPath("$.status").value("ok"))
                 .andExpect(jsonPath("$.database").value("up"))
                 .andExpect(header().exists("X-Request-ID"));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(52);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM flyway_schema_history WHERE success", Integer.class)).isEqualTo(53);
         assertThat(jdbc.queryForObject("""
                 SELECT count(*) FROM information_schema.tables
                 WHERE table_schema='public' AND table_name IN
@@ -199,12 +200,15 @@ class FoundationIT {
         var netStats=new com.tanidikvar.api.catalog.sync.model.YokAtlasNetStats("105490029",2025,
                 new BigDecimal("510.12345"),new BigDecimal("480.50"),new BigDecimal("0.12"),
                 new BigDecimal("32.5"),null,null,null,null,null,null,null,null,null,null,null,null,null,null,null,"f".repeat(64),"{}");
-        var snapshot=new YokAtlasSnapshot("c".repeat(64),null,java.util.List.of(program),java.util.List.of(netStats));
         UUID first=UUID.randomUUID(),second=UUID.randomUUID();
         yokSyncRepository.start(first,null,"APPLY");
-        yokSyncPersistence.apply(first,snapshot);
+        yokSyncRepository.stagePrograms(first,0,java.util.List.of(program));
+        yokSyncRepository.stageNets(first,0,java.util.List.of(netStats));
+        yokSyncPersistence.finish(first,"APPLY",new YokAtlasFetchResult("c".repeat(64),1,1));
         yokSyncRepository.start(second,null,"APPLY");
-        yokSyncPersistence.apply(second,snapshot);
+        yokSyncRepository.stagePrograms(second,0,java.util.List.of(program));
+        yokSyncRepository.stageNets(second,0,java.util.List.of(netStats));
+        yokSyncPersistence.finish(second,"APPLY",new YokAtlasFetchResult("c".repeat(64),1,1));
 
         assertThat(yokSyncRepository.find(first).orElseThrow().status()).isEqualTo("SUCCEEDED");
         assertThat(yokSyncRepository.find(second).orElseThrow().status()).isEqualTo("SKIPPED");
@@ -230,10 +234,9 @@ class FoundationIT {
         var program=new YokAtlasProgram(88079L,377415L,"105490029",173496,"Örnek Üniversitesi","DEVLET","İSTANBUL",
                 null,null,null,"İSTANBUL","ÜSKÜDAR",4001,"Bilgisayar Mühendisliği",
                 "Bilgisayar Mühendisliği","LISANS","SAY","Örgün Öğretim","İngilizce",null,4,java.util.List.of(current));
-        var snapshot=new YokAtlasSnapshot("e".repeat(64),null,java.util.List.of(program));
-
         yokSyncRepository.start(runId,null,"PREVIEW");
-        yokSyncPersistence.preview(runId,snapshot);
+        yokSyncRepository.stagePrograms(runId,0,java.util.List.of(program));
+        yokSyncPersistence.finish(runId,"PREVIEW",new YokAtlasFetchResult("e".repeat(64),1,0));
 
         var run=yokSyncRepository.find(runId).orElseThrow();
         assertThat(run.operation()).isEqualTo("PREVIEW");
@@ -245,6 +248,29 @@ class FoundationIT {
         assertThat(run.qualityReport().optionsWithoutAcademicUnit()).isEqualTo(1);
         assertThat(run.qualityReport().optionsWithoutCurrentSuccessRank()).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT count(*) FROM admission_options WHERE guide_code='105490029'",Integer.class)).isZero();
+    }
+
+    @Test
+    void yokCatalogAllowsOnlyOneActivePreviewOrApplyRun() {
+        UUID first=UUID.randomUUID(),second=UUID.randomUUID();
+        yokSyncRepository.start(first,null,"PREVIEW");
+        assertThatThrownBy(()->yokSyncRepository.start(second,null,"APPLY"))
+                .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        yokSyncRepository.fail(first,"Test tamamlandı.");
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void failedStagedSyncLeavesPublicCatalogUntouchedAndCleansStage() {
+        UUID runId=UUID.randomUUID();
+        var stats=new YokAtlasYearStats(2026,10,9,new BigDecimal("400"),5000,"a".repeat(64));
+        var program=new YokAtlasProgram(null,1L,"memory-safe-test",1,"Bellek Test Üniversitesi","DEVLET","ANKARA",
+                null,null,null,"ANKARA",null,2,"Test Programı","Test Programı","LISANS","SAY",null,null,null,4,java.util.List.of(stats));
+        yokSyncRepository.start(runId,null,"APPLY");yokSyncRepository.stagePrograms(runId,0,java.util.List.of(program));
+        yokSyncRepository.fail(runId,"Kaynak indirme hatası.");yokSyncRepository.clearStage(runId);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM admission_options WHERE guide_code='memory-safe-test'",Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM yok_catalog_program_stage WHERE run_id=?",Integer.class,runId)).isZero();
+        assertThat(yokSyncRepository.find(runId).orElseThrow().status()).isEqualTo("FAILED");
     }
 
     @Test

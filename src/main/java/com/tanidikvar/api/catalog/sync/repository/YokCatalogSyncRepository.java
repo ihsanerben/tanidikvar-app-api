@@ -6,6 +6,7 @@ import com.tanidikvar.api.catalog.sync.dto.YokCatalogQualityReport;
 import com.tanidikvar.api.catalog.sync.model.YokAtlasProgram;
 import com.tanidikvar.api.catalog.sync.model.YokAtlasNetStats;
 import com.tanidikvar.api.catalog.sync.model.YokAtlasSnapshot;
+import com.tanidikvar.api.catalog.sync.model.YokAtlasFetchResult;
 import com.tanidikvar.api.catalog.sync.model.YokAtlasYearStats;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -32,6 +33,36 @@ public class YokCatalogSyncRepository {
                 INSERT INTO catalog_sync_runs(id,source,status,snapshot_checksum,created_by,operation)
                 VALUES (?,'YOK_ATLAS','STARTED',?,?,?)
                 """,id,"0".repeat(64),actor,operation);
+    }
+
+    public void failStaleRuns(Instant cutoff) {
+        jdbc.update("""
+                UPDATE catalog_sync_runs SET status='FAILED',failure_reason='Senkronizasyon heartbeat süresi doldu.',completed_at=CURRENT_TIMESTAMP
+                WHERE source='YOK_ATLAS' AND status='STARTED' AND heartbeat_at<?
+                """,Timestamp.from(cutoff));
+    }
+
+    public void heartbeat(UUID id) {
+        jdbc.update("UPDATE catalog_sync_runs SET heartbeat_at=CURRENT_TIMESTAMP WHERE id=? AND status='STARTED'",id);
+    }
+
+    public void stagePrograms(UUID id,int offset,List<YokAtlasProgram> rows) {
+        List<Object[]> args=new java.util.ArrayList<>(rows.size());
+        for(int index=0;index<rows.size();index++){var row=rows.get(index);args.add(new Object[]{id,offset+index,row.guideCode(),json.writeValueAsString(row)});}
+        jdbc.batchUpdate("INSERT INTO yok_catalog_program_stage(run_id,row_number,guide_code,payload) VALUES (?,?,?,?::jsonb)",args);
+        heartbeat(id);
+    }
+
+    public void stageNets(UUID id,int offset,List<YokAtlasNetStats> rows) {
+        List<Object[]> args=new java.util.ArrayList<>(rows.size());
+        for(int index=0;index<rows.size();index++){var row=rows.get(index);args.add(new Object[]{id,offset+index,row.guideCode(),row.year(),json.writeValueAsString(row)});}
+        jdbc.batchUpdate("INSERT INTO yok_catalog_net_stage(run_id,row_number,guide_code,guide_year,payload) VALUES (?,?,?,?,?::jsonb)",args);
+        heartbeat(id);
+    }
+
+    public void clearStage(UUID id) {
+        jdbc.update("DELETE FROM yok_catalog_net_stage WHERE run_id=?",id);
+        jdbc.update("DELETE FROM yok_catalog_program_stage WHERE run_id=?",id);
     }
 
     public Optional<YokCatalogSyncResponse> find(UUID id) {
@@ -102,11 +133,72 @@ public class YokCatalogSyncRepository {
                 distinctPrograms(snapshot),snapshot.programs().size(),id);
     }
 
+    public void skipStaged(UUID id,YokAtlasFetchResult result) {
+        int universities=jdbc.queryForObject("SELECT count(DISTINCT (payload->>'universityId')::bigint) FROM yok_catalog_program_stage WHERE run_id=?",Integer.class,id);
+        int programs=jdbc.queryForObject("SELECT count(DISTINCT (payload->>'universityId')||':'||(payload->>'programGroupId')) FROM yok_catalog_program_stage WHERE run_id=?",Integer.class,id);
+        jdbc.update("""
+                UPDATE catalog_sync_runs SET status='SKIPPED',snapshot_checksum=?,universities_seen=?,programs_seen=?,options_seen=?,completed_at=CURRENT_TIMESTAMP
+                WHERE id=?
+                """,result.checksum(),universities,programs,result.programCount(),id);
+        clearStage(id);
+    }
+
     public void fail(UUID id,String reason) {
         jdbc.update("""
                 UPDATE catalog_sync_runs SET status='FAILED',failure_reason=?,completed_at=CURRENT_TIMESTAMP
                 WHERE id=? AND status='STARTED'
                 """,reason,id);
+    }
+
+    public YokCatalogQualityReport previewStaged(UUID id,YokAtlasFetchResult result) {
+        Set<String> existingNames=new HashSet<>(),manualNames=new HashSet<>();
+        jdbc.query("SELECT normalized_name,catalog_source FROM universities WHERE deleted_at IS NULL",rs->{
+            String source=rs.getString("catalog_source"),name=rs.getString("normalized_name");
+            if("YOK_ATLAS".equals(source)||"TURKIYE_PROGRAMS".equals(source))existingNames.add(name);else manualNames.add(name);
+        });
+        Set<Long> universities=new HashSet<>(),families=new HashSet<>(),stateIds=new HashSet<>(),foundationIds=new HashSet<>();
+        Set<String> programs=new HashSet<>(),cities=new HashSet<>(),sourceNames=new HashSet<>(),collisionNames=new HashSet<>();
+        int[] counts=new int[4];
+        forEachStagedProgram(id,row->{
+            universities.add(row.universityId());families.add(row.programGroupId());programs.add(row.universityId()+":"+row.programGroupId());
+            String name=CatalogNames.normalized(row.universityName());sourceNames.add(name);if(manualNames.contains(name))collisionNames.add(name);
+            if(row.universityCity()!=null&&!row.universityCity().isBlank())cities.add(CatalogNames.normalized(row.universityCity()));
+            if("DEVLET".equals(row.universityType()))stateIds.add(row.universityId());else if("VAKIF".equals(row.universityType()))foundationIds.add(row.universityId());
+            if("LISANS".equals(row.degreeLevel()))counts[0]++;else counts[1]++;
+            if(row.academicUnitId()==null)counts[2]++;if(row.statistics().isEmpty()||row.statistics().getFirst().successRank()==null)counts[3]++;
+        });
+        int existing=(int)sourceNames.stream().filter(existingNames::contains).count();
+        var report=new YokCatalogQualityReport(universities.size(),families.size(),programs.size(),result.programCount(),cities.size(),stateIds.size(),foundationIds.size(),counts[0],counts[1],counts[2],counts[3],existing,universities.size()-existing,collisionNames.size());
+        jdbc.update("""
+                UPDATE catalog_sync_runs SET status='SUCCEEDED',snapshot_checksum=?,universities_seen=?,programs_seen=?,options_seen=?,quality_report=?::jsonb,completed_at=CURRENT_TIMESTAMP
+                WHERE id=? AND status='STARTED'
+                """,result.checksum(),report.universityCount(),report.programCount(),report.optionCount(),json.writeValueAsString(report),id);
+        clearStage(id);return report;
+    }
+
+    public void applyStaged(UUID runId,YokAtlasFetchResult result) {
+        Instant startedAt=jdbc.queryForObject("SELECT started_at FROM catalog_sync_runs WHERE id=?",Instant.class,runId);
+        forEachStagedProgram(runId,this::upsert);
+        for(int offset=0;;offset+=500){List<YokAtlasNetStats> rows=stagedNets(runId,offset,500);if(rows.isEmpty())break;upsertNetStatistics(rows);}
+        deactivateMissing(Timestamp.from(startedAt));
+        int universities=jdbc.queryForObject("SELECT count(DISTINCT (payload->>'universityId')::bigint) FROM yok_catalog_program_stage WHERE run_id=?",Integer.class,runId);
+        int programs=jdbc.queryForObject("SELECT count(DISTINCT (payload->>'universityId')||':'||(payload->>'programGroupId')) FROM yok_catalog_program_stage WHERE run_id=?",Integer.class,runId);
+        jdbc.update("""
+                UPDATE catalog_sync_runs SET status='SUCCEEDED',snapshot_checksum=?,universities_seen=?,programs_seen=?,options_seen=?,completed_at=CURRENT_TIMESTAMP
+                WHERE id=? AND status='STARTED'
+                """,result.checksum(),universities,programs,result.programCount(),runId);
+        clearStage(runId);
+    }
+
+    private void forEachStagedProgram(UUID id,java.util.function.Consumer<YokAtlasProgram> consumer) {
+        for(int offset=0;;offset+=500){
+            List<YokAtlasProgram> rows=jdbc.query("SELECT payload::text FROM yok_catalog_program_stage WHERE run_id=? ORDER BY row_number LIMIT 500 OFFSET ?",(rs,n)->json.readValue(rs.getString(1),YokAtlasProgram.class),id,offset);
+            if(rows.isEmpty())break;rows.forEach(consumer);
+        }
+    }
+
+    private List<YokAtlasNetStats> stagedNets(UUID id,int offset,int size) {
+        return jdbc.query("SELECT payload::text FROM yok_catalog_net_stage WHERE run_id=? ORDER BY row_number LIMIT ? OFFSET ?",(rs,n)->json.readValue(rs.getString(1),YokAtlasNetStats.class),id,size,offset);
     }
 
     public void apply(UUID runId,YokAtlasSnapshot snapshot) {

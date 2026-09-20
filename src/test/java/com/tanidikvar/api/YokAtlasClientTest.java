@@ -5,6 +5,8 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
+import com.tanidikvar.api.catalog.sync.model.*;
+import java.util.ArrayList;
 import static org.assertj.core.api.Assertions.*;
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.*;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
@@ -26,7 +28,7 @@ class YokAtlasClientTest {
         server.expect(requestTo("https://dataset.example/api/tercih-kilavuz/search")).andExpect(method(org.springframework.http.HttpMethod.POST))
                 .andRespond(withSuccess(RESPONSE,MediaType.APPLICATION_JSON));
         expectNets(server);
-        var snapshot=new YokAtlasClient(builder.build(),new ObjectMapper(),"https://dataset.example/api",500).fetchCompleteSnapshot();
+        var snapshot=fetch(new YokAtlasClient(builder.build(),new ObjectMapper(),"https://dataset.example/api",500));
         assertThat(snapshot.programs()).hasSize(1);var program=snapshot.programs().getFirst();
         assertThat(program.sourceProgramId()).isEqualTo(256098);assertThat(program.guideCode()).isEqualTo("203110477");
         assertThat(program.statistics()).extracting(s->s.year()).containsExactly(2026,2025);
@@ -42,7 +44,7 @@ class YokAtlasClientTest {
         expectReferences(server,5370);
         server.expect(requestTo("https://dataset.example/api/tercih-kilavuz/search"))
                 .andRespond(withSuccess("{\"content\":[{}],\"totalElements\":1,\"totalPages\":1,\"yil\":2026}",MediaType.APPLICATION_JSON));
-        assertThatThrownBy(()->new YokAtlasClient(builder.build(),new ObjectMapper(),"https://dataset.example/api",500).fetchCompleteSnapshot())
+        assertThatThrownBy(()->fetch(new YokAtlasClient(builder.build(),new ObjectMapper(),"https://dataset.example/api",500)))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining("JSON sozlesmesi degisti");
     }
 
@@ -55,8 +57,7 @@ class YokAtlasClientTest {
         server.expect(requestTo("https://dataset.example/api/tercih-kilavuz/search"))
                 .andRespond(withSuccess(response,MediaType.APPLICATION_JSON));
         expectNets(server);
-        var program=new YokAtlasClient(builder.build(),new ObjectMapper(),"https://dataset.example/api",500)
-                .fetchCompleteSnapshot().programs().getFirst();
+        var program=fetch(new YokAtlasClient(builder.build(),new ObjectMapper(),"https://dataset.example/api",500)).programs().getFirst();
         assertThat(program.sourceProgramId()).isNull();
         assertThat(program.academicUnitId()).isNull();
         assertThat(program.programGroupId()).isGreaterThanOrEqualTo(8_000_000_000_000_000_000L);
@@ -69,9 +70,22 @@ class YokAtlasClientTest {
         server.expect(requestTo("https://dataset.example/api/tercih-kilavuz/search"))
                 .andRespond(withSuccess(response,MediaType.APPLICATION_JSON));
         expectNets(server);
-        var historical=new YokAtlasClient(builder.build(),new ObjectMapper(),"https://dataset.example/api",500)
-                .fetchCompleteSnapshot().programs().getFirst().statistics().get(1);
+        var historical=fetch(new YokAtlasClient(builder.build(),new ObjectMapper(),"https://dataset.example/api",500)).programs().getFirst().statistics().get(1);
         assertThat(historical.minimumScore()).isNull();
+    }
+
+    @Test void previewStreamsProgramPagesAndDoesNotDownloadNetDataset(){
+        String first=RESPONSE.replace("\"totalElements\":1,\"totalPages\":1", "\"totalElements\":2,\"totalPages\":2");
+        String second=first.replace("203110477", "203110478");
+        RestClient.Builder builder=RestClient.builder();MockRestServiceServer server=MockRestServiceServer.bindTo(builder).build();
+        expectReferences(server,5370);
+        server.expect(requestTo("https://dataset.example/api/tercih-kilavuz/search")).andRespond(withSuccess(first,MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://dataset.example/api/tercih-kilavuz/search")).andRespond(withSuccess(second,MediaType.APPLICATION_JSON));
+        var batches=new ArrayList<Integer>();var nets=new ArrayList<YokAtlasNetStats>();
+        var result=new YokAtlasClient(builder.build(),new ObjectMapper(),"https://dataset.example/api",1)
+                .fetch(rows->batches.add(rows.size()),nets::addAll,false);
+        assertThat(batches).containsExactly(1,1);assertThat(result.programCount()).isEqualTo(2);
+        assertThat(result.netCount()).isZero();assertThat(nets).isEmpty();server.verify();
     }
 
     private static void expectReferences(MockRestServiceServer server,Integer groupId){
@@ -84,6 +98,12 @@ class YokAtlasClientTest {
                 .andRespond(withSuccess(groups,MediaType.APPLICATION_JSON));
         server.expect(requestTo("https://dataset.example/api/tercih-kilavuz/universite-iller"))
                 .andRespond(withSuccess("[{\"ilKodu\":6,\"ilAdi\":\"ANKARA\"}]",MediaType.APPLICATION_JSON));
+    }
+
+    private static YokAtlasSnapshot fetch(YokAtlasClient client){
+        var programs=new ArrayList<YokAtlasProgram>();var nets=new ArrayList<YokAtlasNetStats>();
+        var result=client.fetch(programs::addAll,nets::addAll,true);
+        return new YokAtlasSnapshot(result.checksum(),null,programs,nets);
     }
 
     private static void expectNets(MockRestServiceServer server){
