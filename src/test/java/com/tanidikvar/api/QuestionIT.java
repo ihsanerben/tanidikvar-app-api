@@ -84,7 +84,9 @@ class QuestionIT {
     @Test void threeScopesFiltersAndDatabaseConstraints()throws Exception {
         var a=member("MEMBER");var manager=actor("MANAGER");var e=education(manager);var t=create(manager,"TAG","Soru Tag "+UUID.randomUUID());
         var c=content("Üniversite ve bölüm deneyimleri nasıl?");c.put("scope","UNIVERSITY_DEPARTMENT");c.put("universityId",e.get("universityId").asText());c.put("departmentId",e.get("departmentId").asText());c.put("tagIds",List.of(t.get("id").asText()));
-        mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isBadRequest());
+        mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isCreated())
+                .andExpect(jsonPath("$.scope").value("UNIVERSITY_DEPARTMENT"))
+                .andExpect(jsonPath("$.departmentId").value(e.get("departmentId").asText()));
         c.remove("universityId");
         mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isBadRequest());
         c.put("universityId",e.get("universityId").asText());c.remove("departmentId");c.put("scope","UNIVERSITY");var q=question(a,c);

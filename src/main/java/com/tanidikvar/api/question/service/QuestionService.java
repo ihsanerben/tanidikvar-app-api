@@ -1,6 +1,7 @@
 package com.tanidikvar.api.question.service;
 import com.tanidikvar.api.auth.service.AccountAccessService;
 import com.tanidikvar.api.catalog.entity.CatalogKind;
+import com.tanidikvar.api.catalog.service.ProgramCatalogService;
 import com.tanidikvar.api.catalog.service.CatalogService;
 import com.tanidikvar.api.common.dto.PageResponse;
 import com.tanidikvar.api.common.error.DomainException;
@@ -27,11 +28,12 @@ public class QuestionService {
     private final AccountAccessService accounts;
     private final InteractionPolicy interaction;
     private final CatalogService catalog;
+    private final ProgramCatalogService programs;
     private final Clock clock;
-    public QuestionService(QuestionRepository questions,QuestionMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,CatalogService catalog,com.tanidikvar.api.engagement.service.QuestionStatisticsService statistics,Clock clock) {
+    public QuestionService(QuestionRepository questions,QuestionMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,CatalogService catalog,ProgramCatalogService programs,com.tanidikvar.api.engagement.service.QuestionStatisticsService statistics,Clock clock) {
         this.clock=clock;
         this.statistics=statistics;
-        this.questions=questions;this.mapper=mapper;this.accounts=accounts;this.interaction=interaction;this.catalog=catalog;
+        this.questions=questions;this.mapper=mapper;this.accounts=accounts;this.interaction=interaction;this.catalog=catalog;this.programs=programs;
     }
     private Question find(UUID id,boolean lock) { return questions.find(id,lock).orElseThrow(()->new DomainException(404,"NOT_FOUND","Soru bulunamadı.")); }
     private QuestionResponse response(Question q) { return mapper.toResponse(q,questions.tags(List.of(q.id())).getOrDefault(q.id(),List.of()),statistics.get(q.id())); }
@@ -83,11 +85,18 @@ public class QuestionService {
         boolean valid=switch(c.scope()) {
             case GENERAL -> c.universityId()==null && c.programId()==null && c.departmentId()==null;
             case UNIVERSITY -> c.universityId()!=null && c.programId()==null && c.departmentId()==null;
-            case UNIVERSITY_DEPARTMENT -> false;
+            case UNIVERSITY_DEPARTMENT -> c.universityId()!=null && (c.programId()!=null || c.departmentId()!=null);
         };
         if(!valid)throw new DomainException(400,"VALIDATION_FAILED","Soru kapsamıyla eğitim seçimi uyuşmuyor.",Map.of("scope","Kapsama uygun eğitim seç"));
+        UUID programId=c.programId(),departmentId=c.departmentId();
+        if(c.scope()==QuestionScope.UNIVERSITY_DEPARTMENT&&programId!=null) {
+            var selected=programs.detail(programId).summary();
+            if(!selected.universityId().equals(c.universityId()))throw new DomainException(400,"VALIDATION_FAILED","Program seçilen üniversiteye ait değil.",Map.of("programId","Üniversiteye ait bir program seç"));
+            departmentId=selected.departmentId();
+            if(departmentId==null)throw new DomainException(400,"VALIDATION_FAILED","Programın bölüm bağlantısı bulunamadı.",Map.of("programId","Başka bir program seç"));
+        }
         String body=c.body()==null?null:c.body().strip();
-        return new QuestionContent(title,body==null||body.isEmpty()?null:body,c.scope(),c.universityId(),null,null,c.tagIds());
+        return new QuestionContent(title,body==null||body.isEmpty()?null:body,c.scope(),c.universityId(),programId,departmentId,c.tagIds());
     }
     private void references(QuestionContent c,Question old,List<QuestionTagResponse> oldTags) {
         if(c.universityId()!=null)catalog.lockReference(CatalogKind.UNIVERSITY,c.universityId(),old==null||!c.universityId().equals(old.universityId()));

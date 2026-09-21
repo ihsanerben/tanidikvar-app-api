@@ -180,6 +180,19 @@ class EngagementIT {
         mvc.perform(write("PUT","/api/manager/reports/"+id,manager,Map.of("status","RESOLVED","reason","Manager incelemesi tamamlandı.","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RESOLVED")).andExpect(jsonPath("$.version").value(1));
         mvc.perform(get("/api/manager/reports").cookie(reporter.cookie())).andExpect(status().isForbidden());
     }
+    @Test void answersAndRepliesCanBeEditedSharedAndReportedThroughManagedWorkflow()throws Exception {
+        var author=member("MEMBER");var replyAuthor=member("MEMBER");var reporter=member("MEMBER");var manager=actor("MANAGER");String q=question(author);
+        var answer=answer(author,q,"Düzenlenebilir ve raporlanabilir topluluk yorumu");String answerId=answer.get("id").asText();
+        var comment=mapper.readTree(mvc.perform(write("POST","/api/answers/"+answerId+"/comments",replyAuthor,Map.of("body","İlk yanıt metni"))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());String commentId=comment.get("id").asText();
+        mvc.perform(write("PUT","/api/answers/"+answerId+"/comments/"+commentId,replyAuthor,Map.of("body","Düzenlenmiş yanıt metni","version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.body").value("Düzenlenmiş yanıt metni")).andExpect(jsonPath("$.version").value(1));
+        mvc.perform(write("PUT","/api/answers/"+answerId+"/comments/"+commentId,reporter,Map.of("body","Yetkisiz değişiklik","version",1))).andExpect(status().isForbidden());
+        mvc.perform(write("POST","/api/answers/"+answerId+"/reports",reporter,Map.of("reason","Yanıltıcı yorum içeriği bulunuyor."))).andExpect(status().isCreated());
+        mvc.perform(write("POST","/api/answer-comments/"+commentId+"/reports",reporter,Map.of("reason","Uygunsuz yanıt içeriği bulunuyor."))).andExpect(status().isCreated());
+        mvc.perform(write("POST","/api/answers/"+answerId+"/reports",reporter,Map.of("reason","Aynı içeriği yeniden bildiriyorum."))).andExpect(status().isConflict());
+        mvc.perform(write("POST","/api/answers/"+answerId+"/reports",author,Map.of("reason","Kendi yorumumu bildirmeyi deniyorum."))).andExpect(status().isNotFound());
+        var listed=mapper.readTree(mvc.perform(get("/api/manager/content-reports?status=OPEN").cookie(manager.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(2)).andReturn().getResponse().getContentAsString());
+        var first=listed.get("items").get(0);mvc.perform(write("PUT","/api/manager/content-reports/"+first.get("id").asText(),manager,Map.of("status","RESOLVED","reason","İçerik şikâyeti incelendi.","version",first.get("version").asLong()))).andExpect(status().isOk()).andExpect(jsonPath("$.status").value("RESOLVED"));
+    }
     @Autowired org.springframework.transaction.PlatformTransactionManager transactions;
     @Autowired com.tanidikvar.api.engagement.service.EngagementService engagement;
     @Test void outerTransactionFailureRollsBackBothInteractions()throws Exception {

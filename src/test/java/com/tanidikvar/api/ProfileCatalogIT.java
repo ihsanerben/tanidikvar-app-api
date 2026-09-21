@@ -223,6 +223,7 @@ class ProfileCatalogIT {
         mvc.perform(get("/api/me/follows").cookie(member.cookie())).andExpect(jsonPath("$.totalElements").value(0));
         mvc.perform(write("PUT","/api/me/saved",member,follow)).andExpect(status().isOk()).andExpect(jsonPath("$.active").value(true));
         mvc.perform(write("PUT","/api/me/follows",member,Map.of("targetType","TANIDIK","targetId",member.id(),"active",true))).andExpect(status().isBadRequest());
+        mvc.perform(write("PUT","/api/me/follows",member,Map.of("targetType","PROGRAM","targetId",UUID.randomUUID(),"active",true))).andExpect(status().isBadRequest());
         mvc.perform(write("PUT","/api/me/saved",member,Map.of("targetType","QUESTION","targetId",UUID.randomUUID(),"active",true))).andExpect(status().isNotFound());
         UUID notification=UUID.randomUUID();jdbc.update("INSERT INTO notifications(id,user_id,notification_type,title,body) VALUES (?,?,?,?,?)",notification,member.id(),"BADGE","Yeni rozet","Yeni bir katkı rozeti kazandın.");
         mvc.perform(get("/api/me/notifications").cookie(member.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].readAt").isEmpty());
@@ -343,9 +344,17 @@ class ProfileCatalogIT {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM gamification_fraud_signals WHERE signal_type IN ('LOW_QUALITY_ANSWER','DUPLICATE_CONTENT','SELF_VOTE')",Long.class)).isGreaterThanOrEqualTo(3);
     }
     @Test void followedContextActivitiesAchievementsAndTitlesCreatePreferenceAwareNotifications()throws Exception{
-        var follower=actor("MEMBER");var contributor=actor("TANIDIK");var manager=actor("MANAGER");var ids=education(manager);UUID university=UUID.fromString(ids.get("universityId").asText());
+        var follower=actor("MEMBER");var campusMember=actor("MEMBER");var mutedMember=actor("MEMBER");var contributor=actor("TANIDIK");var manager=actor("MANAGER");var ids=education(manager);UUID university=UUID.fromString(ids.get("universityId").asText());
         mvc.perform(write("PUT","/api/me/follows",follower,Map.of("targetType","UNIVERSITY","targetId",university,"active",true))).andExpect(status().isOk());
         var contributorProfile=profile("UNIVERSITE_OGRENCISI",0);contributorProfile.put("universityId",university);contributorProfile.put("departmentId",ids.get("departmentId").asText());contributorProfile.put("classYear",2);mvc.perform(write("PUT","/api/me/profile",contributor,contributorProfile)).andExpect(status().isOk());
+        var campusProfile=profile("UNIVERSITE_OGRENCISI",0);campusProfile.put("universityId",university);campusProfile.put("departmentId",ids.get("departmentId").asText());campusProfile.put("classYear",1);mvc.perform(write("PUT","/api/me/profile",campusMember,campusProfile)).andExpect(status().isOk());
+        mvc.perform(write("PUT","/api/me/follows",campusMember,Map.of("targetType","UNIVERSITY","targetId",university,"active",true))).andExpect(status().isOk());
+        var mutedProfile=profile("UNIVERSITE_OGRENCISI",0);mutedProfile.put("universityId",university);mutedProfile.put("departmentId",ids.get("departmentId").asText());mutedProfile.put("classYear",1);mvc.perform(write("PUT","/api/me/profile",mutedMember,mutedProfile)).andExpect(status().isOk());
+        mvc.perform(write("PUT","/api/me/notification-preferences",mutedMember,Map.of("inAppEnabled",false,"emailEnabled",false,"emailFrequency","NEVER","questionRoutingEnabled",true,"version",0))).andExpect(status().isOk());
+        var routedQuestion=mapper.readTree(mvc.perform(write("POST","/api/questions",contributor,Map.of("requestId",UUID.randomUUID(),"content",Map.of("title","Üniversite bildirim rotası için yeni soru","scope","UNIVERSITY","universityId",university,"tagIds",List.of())))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        for(var recipient:List.of(follower,campusMember)){mvc.perform(get("/api/me/notifications").cookie(recipient.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.items[?(@.targetId == '%s')]",routedQuestion.get("id").asText()).exists());assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND target_type='QUESTION' AND target_id=?",Long.class,recipient.id(),UUID.fromString(routedQuestion.get("id").asText()))).isEqualTo(1);}
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND target_id=?",Long.class,mutedMember.id(),UUID.fromString(routedQuestion.get("id").asText()))).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND target_id=?",Long.class,contributor.id(),UUID.fromString(routedQuestion.get("id").asText()))).isZero();
         mvc.perform(write("PUT","/api/evaluations",contributor,Map.of("universityId",university,"rating",4,"body","Takip bildirimi için yeterli değerlendirme açıklaması."))).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND notification_type='NEW_EVALUATION'",Long.class,follower.id())).isEqualTo(1);
         jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version) VALUES (?,?,?,?,?,?,1)",UUID.randomUUID(),follower.id(),"TEST_TITLE",100,"TEST",UUID.randomUUID());
