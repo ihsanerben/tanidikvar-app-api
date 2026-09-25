@@ -30,22 +30,30 @@ public class AccountActionService {
     }
     @Transactional
     public void register(String email, String password) {
+        register(email, password, false);
+    }
+    @Transactional
+    public void register(String email, String password, boolean mobile) {
         AuthenticationService.validatePassword(password);
         String hash = passwords.encode(password);
         // Same HTTP result for existing and new addresses; no account enumeration.
         var id = java.util.UUID.randomUUID();
         if (accounts.insertIfAbsent(id, AuthenticationService.normalizeEmail(email), hash, clock.instant()) == 0) return;
         var account = accounts.findById(id).orElseThrow(RegistrationException::new);
-        send(account, ActionPurpose.VERIFY_EMAIL);
+        send(account, ActionPurpose.VERIFY_EMAIL, mobile);
     }
     @Transactional
     public void request(String email, ActionPurpose purpose) {
+        request(email, purpose, false);
+    }
+    @Transactional
+    public void request(String email, ActionPurpose purpose, boolean mobile) {
         var candidate = accounts.findIdByEmail(AuthenticationService.normalizeEmail(email));
         if (candidate.isEmpty()) return;
         var account = accounts.lockById(candidate.get()).orElseThrow(AuthRejectedException::new);
         if (account.isDeleted() || (purpose == ActionPurpose.VERIFY_EMAIL && account.isEmailVerified())
                 || (purpose == ActionPurpose.RESET_PASSWORD && !account.isEmailVerified())) return;
-        send(account, purpose);
+        send(account, purpose, mobile);
     }
     @Transactional
     public void verify(String token) {
@@ -68,11 +76,11 @@ public class AccountActionService {
         actions.consumeAll(userId, purpose, clock.instant());
         return account;
     }
-    private void send(Account account, ActionPurpose purpose) {
+    private void send(Account account, ActionPurpose purpose, boolean mobile) {
         byte[] bytes = new byte[32]; random.nextBytes(bytes);
         String token = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
         Duration ttl = purpose == ActionPurpose.VERIFY_EMAIL ? Duration.ofHours(24) : Duration.ofMinutes(30);
         actions.save(new ActionToken(account.getId(), purpose, tokens.hash(token), clock.instant().plus(ttl), clock.instant()));
-        events.publishEvent(new AuthMailEvent(account.getEmail(), token, purpose));
+        events.publishEvent(new AuthMailEvent(account.getEmail(), token, purpose, mobile));
     }
 }

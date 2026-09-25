@@ -36,6 +36,8 @@ public class AuthMailSender {
         String url = frontendUrl + (verify ? "/verify-email" : "/reset-password") + "#token=" + event.token();
         String text = (verify ? "E-posta adresini doğrulamak için (24 saat geçerli):" : "Şifreni yenilemek için (30 dakika geçerli):")
                 + "\n\n" + url + "\n\nSevgiler,\nTanıdıkVar Ekibi";
+        String mobileCode = event.mobile() ? "\n\nMobil uygulamadaki doğrulama/şifre yenileme alanına yapıştırabileceğin kod:\n" + event.token() : "";
+        text += mobileCode;
         String action = verify ? "E-posta adresimi doğrula" : "Şifremi yenile";
         String intro = verify ? "E-posta adresini doğrulamak için aşağıdaki butonu kullan. Bu bağlantı 24 saat geçerlidir."
                 : "Şifreni yenilemek için aşağıdaki butonu kullan. Bu bağlantı 30 dakika geçerlidir.";
@@ -48,6 +50,7 @@ public class AuthMailSender {
                 + "<p style=\"margin:28px 0\"><a href=\"" + safeUrl + "\" target=\"_blank\" rel=\"noopener noreferrer\" "
                 + "style=\"display:inline-block;padding:14px 22px;border-radius:10px;background:#2f8f57;color:#fff;text-decoration:none;font-weight:700\">"
                 + action + "</a></p>"
+                + (event.mobile() ? "<p>Mobil uygulamada kullanabileceğin kod:</p><p>" + event.token() + "</p>" : "")
                 + "<p style=\"margin:26px 0 0;color:#50645b\">Sevgiler,<br><strong>TanıdıkVar Ekibi</strong></p></div></div></div>";
         try { delivery.send(new AuthMailMessage(from, event.email(), subject, text, html)); }
         catch (RuntimeException e) { log.warn("auth_mail_delivery_failed purpose={} errorType={} message={}", event.purpose(), e.getClass().getSimpleName(), e.getMessage()); }

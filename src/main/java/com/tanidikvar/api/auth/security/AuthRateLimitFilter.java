@@ -32,6 +32,7 @@ public class AuthRateLimitFilter extends OncePerRequestFilter {
         String method=request.getMethod(),path=request.getRequestURI();
         if(method.equals("POST") && path.startsWith("/api/auth/")) {
             String operation=path.substring("/api/auth/".length());
+            if (operation.startsWith("mobile/")) operation=operation.substring("mobile/".length());
             return AUTH_OPERATIONS.contains(operation)?operation:null;
         }
         if(method.equals("POST") && path.equals("/api/questions"))return "question-create";

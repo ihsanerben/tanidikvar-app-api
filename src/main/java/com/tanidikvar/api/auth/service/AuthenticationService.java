@@ -23,12 +23,14 @@ public class AuthenticationService {
     private final AuthProperties properties;
     private final Clock clock;
     private final String dummyHash;
+    private final AccountLifecycleService lifecycle;
 
     public AuthenticationService(AccountRepository accounts, AuthSessionRepository sessions, PasswordEncoder passwords,
-            JwtTokens tokens, AccountMapper mapper, AuthProperties properties, Clock clock) {
+            JwtTokens tokens, AccountMapper mapper, AuthProperties properties, Clock clock, AccountLifecycleService lifecycle) {
         this.accounts = accounts; this.sessions = sessions; this.passwords = passwords;
         this.tokens = tokens; this.mapper = mapper; this.properties = properties; this.clock = clock;
         this.dummyHash = passwords.encode(UUID.randomUUID().toString());
+        this.lifecycle = lifecycle;
     }
 
     public static String normalizeEmail(String email) { return email.strip().toLowerCase(Locale.ROOT); }
@@ -92,6 +94,22 @@ public class AuthenticationService {
         if (!sessions.existsByUserIdAndFamilyIdAndReplacedByIdIsNullAndRevokedAtIsNullAndDeletedAtIsNullAndExpiresAtAfter(userId, familyId, clock.instant()))
             throw new AuthRejectedException();
         return new SessionPrincipal(userId, familyId, mapper.toResponse(account));
+    }
+
+    @Transactional
+    public void logoutAll(UUID userId) {
+        accounts.lockById(userId).orElseThrow(AuthRejectedException::new);
+        sessions.revokeAll(userId, clock.instant());
+    }
+
+    @Transactional
+    public void closeAccount(UUID userId, String password) {
+        validatePassword(password);
+        var account = accounts.lockById(userId).orElseThrow(AuthRejectedException::new);
+        if (!passwords.matches(password, account.getPasswordHash())) throw new AuthRejectedException();
+        if (account.getAuthority() == Authority.MANAGER)
+            throw new com.tanidikvar.api.common.error.DomainException(403, "ACCESS_DENIED", "Yönetim hesabı bu akıştan kapatılamaz.");
+        lifecycle.setDisabled(account, true, clock.instant());
     }
 
     private IssuedSession issue(Account account, UUID familyId, Instant refreshExpiry) {

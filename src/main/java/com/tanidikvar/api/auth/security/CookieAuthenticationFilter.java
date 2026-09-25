@@ -26,7 +26,8 @@ public class CookieAuthenticationFilter extends OncePerRequestFilter {
     }
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        String token = cookies.read(request, AuthCookies.ACCESS);
+        String token = request.getHeader("Authorization") != null
+                ? MobileTransport.bearer(request) : cookies.read(request, AuthCookies.ACCESS);
         if (token != null) {
             try {
                 var principal = authentication.authenticate(token);

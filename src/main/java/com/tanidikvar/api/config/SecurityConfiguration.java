@@ -32,6 +32,7 @@ public class SecurityConfiguration {
         csrfRepository.setCookieCustomizer(cookie -> cookie.secure(secure).sameSite("Lax").path("/"));
         return http.cors(cors -> cors.configurationSource(corsSource))
                 .csrf(csrf -> csrf.csrfTokenRepository(csrfRepository)
+                        .ignoringRequestMatchers(MobileTransport::csrfExempt)
                         .csrfTokenRequestHandler(new CsrfTokenRequestAttributeHandler()))
                 .addFilterAfter(new AuthRateLimitFilter(limiter, addresses, mapper), CsrfFilter.class)
                 .addFilterAfter(new CookieAuthenticationFilter(authentication, cookies, mapper), AuthRateLimitFilter.class)
@@ -45,6 +46,10 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login", "/api/auth/refresh", "/api/auth/logout",
                                 "/api/auth/resend-verification", "/api/auth/verify-email", "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/contact").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/auth/mobile/login", "/api/auth/mobile/refresh", "/api/auth/mobile/logout",
+                                "/api/auth/mobile/register", "/api/auth/mobile/resend-verification", "/api/auth/mobile/verify-email",
+                                "/api/auth/mobile/forgot-password", "/api/auth/mobile/reset-password").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/me/logout-all", "/api/me/close-account").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/universities", "/api/universities/*", "/api/universities/*/departments", "/api/universities/*/departments/*", "/api/universities/*/catalog-statistics", "/api/departments", "/api/programs", "/api/catalog-programs", "/api/catalog-programs/*", "/api/statistics/overview", "/api/tags").permitAll()
                         .requestMatchers("/api/manager/**").hasRole("MANAGER")
                         .requestMatchers(HttpMethod.POST, "/api/questions").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "TANIDIK")
@@ -60,6 +65,8 @@ public class SecurityConfiguration {
                         .requestMatchers(HttpMethod.GET, "/api/me/education-verification", "/api/me/notification-preferences").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/polls").authenticated()
                         .requestMatchers(HttpMethod.PUT, "/api/polls/*/vote").authenticated()
+                        .requestMatchers(HttpMethod.PUT, "/api/me/push-device").authenticated()
+                        .requestMatchers(HttpMethod.DELETE, "/api/me/push-device").authenticated()
                         .requestMatchers("/api/me/follows", "/api/me/saved", "/api/me/notifications", "/api/me/notifications/*/read").authenticated()
                         .requestMatchers(HttpMethod.POST, "/api/questions/*/answers", "/api/questions/*/admin-answers", "/api/questions/*/reports", "/api/answers/*/reports", "/api/answer-comments/*/reports", "/api/me/admin-applications").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "TANIDIK")
                         .requestMatchers(HttpMethod.PUT, "/api/questions/*/like", "/api/questions/*/assignment", "/api/answers/*", "/api/answers/*/comments/*", "/api/answers/*/like", "/api/answers/*/status", "/api/admin-answers/*", "/api/admin-answers/*/status", "/api/questions/*").hasAnyRole("USER", "YKS_ADAYI", "UNIVERSITE_OGRENCISI", "MEZUN", "TANIDIK")
@@ -95,7 +102,7 @@ public class SecurityConfiguration {
         var config = new CorsConfiguration();
         config.setAllowedOrigins(List.of(origin));
         config.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN"));
+        config.setAllowedHeaders(List.of("Content-Type", "X-XSRF-TOKEN", "Authorization"));
         config.setExposedHeaders(List.of("X-Request-ID", "Retry-After"));
         config.setAllowCredentials(true);
         var source = new UrlBasedCorsConfigurationSource();

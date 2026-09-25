@@ -8,6 +8,6 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 public class CurrentUserController {
-    @GetMapping("/api/me") @SecurityRequirement(name = "accessCookie")
+    @GetMapping("/api/me") @SecurityRequirement(name = "accessCookie") @SecurityRequirement(name = "bearerAuth")
     public CurrentUserResponse me(@AuthenticationPrincipal SessionPrincipal principal) { return principal.user(); }
 }

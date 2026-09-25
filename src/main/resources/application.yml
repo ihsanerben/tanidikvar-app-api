@@ -40,6 +40,9 @@ server:
     include-stacktrace: never
     include-binding-errors: never
 app:
+  push:
+    enabled: ${EXPO_PUSH_ENABLED:false}
+    access-token: ${EXPO_PUSH_ACCESS_TOKEN:}
   pilot-mode: ${PILOT_MODE:false}
   storage-directory: ${STORAGE_DIRECTORY:.local/storage}
   catalog:
