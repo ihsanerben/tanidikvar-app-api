@@ -100,6 +100,17 @@ class MobilePushIT extends AuthenticationIT {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM push_devices WHERE push_token=?",Long.class,next)).isEqualTo(1);
         org.mockito.Mockito.verify(gateway,never()).receipt("old-ticket");
     }
+    @Test void lateProviderFailureCannotDisableAReenabledDevice() throws Exception {
+        var a=session();String token="ExpoPushToken["+UUID.randomUUID()+"]";
+        mvc.perform(device(a,token)).andExpect(status().isNoContent());note(a);
+        when(gateway.send(token,"/bildirimler")).thenAnswer(invocation -> {
+            mvc.perform(delete("/api/me/push-device").header("Authorization","Bearer "+a.path("accessToken").asText())).andExpect(status().isNoContent());
+            mvc.perform(device(a,token)).andExpect(status().isNoContent());
+            return new PushGateway.Result("FAILED",null,"DEVICE_NOT_REGISTERED");
+        });
+        processor.process();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM push_devices WHERE push_token=?",Long.class,token)).isEqualTo(1);
+    }
     @Test void exportsMobileContract() throws Exception {
         String json=mvc.perform(get("/v3/api-docs")).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         Files.createDirectories(Path.of("target"));Files.writeString(Path.of("target/mobile-openapi.json"),json);

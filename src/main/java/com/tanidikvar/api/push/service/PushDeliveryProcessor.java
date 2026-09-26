@@ -12,9 +12,10 @@ public class PushDeliveryProcessor {
     private static final Logger log=LoggerFactory.getLogger(PushDeliveryProcessor.class);
     private final PushDeliveryRepository deliveries;
     private final PushGateway gateway;
+    private final PushDeliveryFinalizer finalizer;
     private final boolean enabled;
-    public PushDeliveryProcessor(PushDeliveryRepository deliveries,PushGateway gateway,@Value("${app.push.enabled:false}") boolean enabled) {
-        this.deliveries=deliveries;this.gateway=gateway;this.enabled=enabled;
+    public PushDeliveryProcessor(PushDeliveryRepository deliveries,PushGateway gateway,PushDeliveryFinalizer finalizer,@Value("${app.push.enabled:false}") boolean enabled) {
+        this.deliveries=deliveries;this.gateway=gateway;this.finalizer=finalizer;this.enabled=enabled;
     }
     @Scheduled(fixedDelayString="${app.push.delay-ms:30000}",initialDelayString="${app.push.initial-delay-ms:60000}")
     public void scheduled() {
@@ -26,12 +27,12 @@ public class PushDeliveryProcessor {
         deliveries.expire();
         for(var delivery:deliveries.claim()) {
             var token=deliveries.eligibleToken(delivery);
-            if(token.isEmpty()) { deliveries.finish(delivery,"CANCELLED",null,null,null); continue; }
+            if(token.isEmpty()) { finalizer.finish(delivery,"CANCELLED",null,null,null); continue; }
             PushGateway.Result result;
             try { result=delivery.ticket()==null?gateway.send(token.get().token(),token.get().url()):gateway.receipt(delivery.ticket()); }
             catch(RuntimeException exception) { result=new PushGateway.Result("RETRY",null,"PROVIDER_UNAVAILABLE"); }
             String state=result.state().equals("RETRY")?(delivery.attempt()>=6?"FAILED":delivery.ticket()==null?"PENDING":"TICKET"):result.state();
-            deliveries.finish(delivery,state,result.ticket(),result.error(),token.get().token());
+            finalizer.finish(delivery,state,result.ticket(),result.error(),token.get().token());
             if(state.equals("FAILED")) log.warn("push_delivery_failed delivery={} code={}",delivery.id(),result.error());
         }
     }

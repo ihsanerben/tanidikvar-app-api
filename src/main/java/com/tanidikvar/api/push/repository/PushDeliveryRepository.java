@@ -45,14 +45,14 @@ public class PushDeliveryRepository {
         };
     }
     public void finish(Delivery delivery,String state,String ticket,String error,String token) {
-        jdbc.update("""
+        int finished=jdbc.update("""
             UPDATE push_deliveries SET status=?,ticket_id=coalesce(?,ticket_id),last_error=?,
               attempts=CASE WHEN ?='TICKET' AND ticket_id IS NULL THEN 0 ELSE attempts END,
               due_at=CURRENT_TIMESTAMP + (? * interval '1 minute')
             WHERE id=? AND attempts=? AND status=?
             """,state,ticket,error,state,state.equals("TICKET")?15:Math.min(60,1<<delivery.attempt()),delivery.id(),delivery.attempt(),delivery.state());
-        if("DEVICE_NOT_REGISTERED".equals(error))
-            jdbc.update("UPDATE push_devices SET push_token=NULL,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND push_token=?",delivery.device(),token);
+        if(finished>0 && "DEVICE_NOT_REGISTERED".equals(error))
+            jdbc.update("UPDATE push_devices SET push_token=NULL,version=version+1,updated_at=CURRENT_TIMESTAMP WHERE id=? AND push_token=? AND version=(SELECT device_version FROM push_deliveries WHERE id=?)",delivery.device(),token,delivery.id());
     }
     public void expire() {
         jdbc.update("UPDATE push_deliveries SET status='FAILED',last_error='RETRY_EXHAUSTED' WHERE status IN ('PENDING','TICKET','PROCESSING','RECEIPT') AND (created_at<CURRENT_TIMESTAMP-interval '24 hours' OR (attempts>=6 AND (locked_at IS NULL OR locked_at<CURRENT_TIMESTAMP-interval '5 minutes')))");
