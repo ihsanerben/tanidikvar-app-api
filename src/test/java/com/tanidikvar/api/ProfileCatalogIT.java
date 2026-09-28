@@ -223,7 +223,7 @@ class ProfileCatalogIT {
         mvc.perform(get("/api/me/follows").cookie(member.cookie())).andExpect(jsonPath("$.totalElements").value(0));
         mvc.perform(write("PUT","/api/me/saved",member,follow)).andExpect(status().isOk()).andExpect(jsonPath("$.active").value(true));
         mvc.perform(write("PUT","/api/me/follows",member,Map.of("targetType","TANIDIK","targetId",member.id(),"active",true))).andExpect(status().isBadRequest());
-        mvc.perform(write("PUT","/api/me/follows",member,Map.of("targetType","PROGRAM","targetId",UUID.randomUUID(),"active",true))).andExpect(status().isBadRequest());
+        mvc.perform(write("PUT","/api/me/follows",member,Map.of("targetType","PROGRAM","targetId",UUID.randomUUID(),"active",true))).andExpect(status().isNotFound());
         mvc.perform(write("PUT","/api/me/saved",member,Map.of("targetType","QUESTION","targetId",UUID.randomUUID(),"active",true))).andExpect(status().isNotFound());
         UUID notification=UUID.randomUUID();jdbc.update("INSERT INTO notifications(id,user_id,notification_type,title,body) VALUES (?,?,?,?,?)",notification,member.id(),"BADGE","Yeni rozet","Yeni bir katkı rozeti kazandın.");
         mvc.perform(get("/api/me/notifications").cookie(member.cookie())).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].readAt").isEmpty());
@@ -357,6 +357,11 @@ class ProfileCatalogIT {
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND target_id=?",Long.class,contributor.id(),UUID.fromString(routedQuestion.get("id").asText()))).isZero();
         mvc.perform(write("PUT","/api/evaluations",contributor,Map.of("universityId",university,"rating",4,"body","Takip bildirimi için yeterli değerlendirme açıklaması."))).andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND notification_type='NEW_EVALUATION'",Long.class,follower.id())).isEqualTo(1);
+        mvc.perform(write("PUT","/api/context-metrics",contributor,Map.of("universityId",university,"metricKey","WEEKLY_STUDY_HOURS","value",12))).andExpect(status().isNoContent());
+        mvc.perform(get("/api/me/notifications").param("targetType","METRIC").cookie(follower.cookie()))
+          .andExpect(status().isOk()).andExpect(jsonPath("$.items[0].universityId").value(university.toString()))
+          .andExpect(jsonPath("$.items[0].metricKey").value("WEEKLY_STUDY_HOURS"));
+
         jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version) VALUES (?,?,?,?,?,?,1)",UUID.randomUUID(),follower.id(),"TEST_TITLE",100,"TEST",UUID.randomUUID());
         jdbc.update("INSERT INTO user_achievements(id,user_id,achievement_key,title) VALUES (?,?,?,?)",UUID.randomUUID(),follower.id(),"TEST_NOTIFICATION","Bildirim Rozeti");
         assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND notification_type='TITLE_UPGRADED'",Long.class,follower.id())).isGreaterThanOrEqualTo(1);

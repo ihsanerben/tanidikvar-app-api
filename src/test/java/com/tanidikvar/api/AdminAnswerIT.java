@@ -55,6 +55,27 @@ class AdminAnswerIT {
  JsonNode publish(Actor a,String q)throws Exception{return mapper.readTree(mvc.perform(write("POST","/api/questions/"+q+"/admin-answers",a,Map.of("body","Üniversitede edindiğim gerçek deneyim."))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
  String path(JsonNode a){return "/api/admin-answers/"+a.get("id").asText();}
  UUID verification(Actor a){return jdbc.queryForObject("SELECT active_verification_application_id FROM users WHERE id=?",UUID.class,a.id());}
+ @Test void graduateTanidikCanContributeToTheirUniversity()throws Exception{
+  var a=admin();
+  jdbc.update("UPDATE user_profiles SET education_status='MEZUN',class_year=NULL,graduation_year=2025 WHERE user_id=?",a.id());
+  UUID university=jdbc.queryForObject("SELECT university_id FROM user_profiles WHERE user_id=?",UUID.class,a.id());
+  mvc.perform(write("PUT","/api/evaluations",a,Map.of("universityId",university,"rating",5,"body","Mezun olarak üniversite deneyimim."))).andExpect(status().isOk());
+  mvc.perform(write("POST","/api/polls",a,Map.of("universityId",university,"question","Mezunların üniversite deneyimi nasıldı?","options",List.of("İyi","Geliştirilebilir"),"verifiedOnly",false))).andExpect(status().isCreated());
+ }
+ @Test void anonymousCommunityAnswersRequireTanidikAndStayOutOfPublicHistory()throws Exception{
+  var a=admin();var member=member();String q=question(a),path="/api/questions/"+q+"/answers";
+  mvc.perform(write("POST",path,member,Map.of("body","Topluluğa anonim yorum denemesi.","anonymous",true))).andExpect(status().isForbidden());
+  var created=mapper.readTree(mvc.perform(write("POST",path,a,Map.of("body","Topluluğa anonim Tanıdık yorumu.","anonymous",true)))
+    .andExpect(status().isCreated()).andExpect(jsonPath("$.anonymous").value(true)).andExpect(jsonPath("$.authorId").isEmpty())
+    .andExpect(jsonPath("$.universityName").isEmpty()).andReturn().getResponse().getContentAsString());
+  mvc.perform(get(path)).andExpect(jsonPath("$.items[0].authorName").value("Anonim Tanıdık")).andExpect(jsonPath("$.items[0].authorId").isEmpty());
+  mvc.perform(get("/api/profiles/"+a.id()+"/comments/community")).andExpect(jsonPath("$.totalElements").value(0));
+  mvc.perform(get("/api/me/answers?anonymous=true").cookie(a.cookie())).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.items[0].answer.id").value(created.get("id").asText()));
+  mvc.perform(get("/api/me/answers?anonymous=false").cookie(a.cookie())).andExpect(jsonPath("$.totalElements").value(0));
+  mvc.perform(get("/api/me/answers?anonymous=true").cookie(member.cookie())).andExpect(jsonPath("$.totalElements").value(0));
+  jdbc.update("UPDATE users SET authority='MEMBER',active_verification_application_id=NULL WHERE id=?",a.id());
+  mvc.perform(write("POST",path,a,Map.of("body","Statü kaldırıldıktan sonra anonim yorum.","anonymous",true))).andExpect(status().isForbidden());
+ }
  @Test void assignmentIsPrivateVersionedCancellableAndDoesNotConsumeQuota()throws Exception{
   var a=admin();var b=admin();String q=question(a);
   mvc.perform(get("/api/questions/"+q+"/my-admin-answer").cookie(a.cookie())).andExpect(jsonPath("$.assignment.version").value(0));
@@ -93,10 +114,10 @@ class AdminAnswerIT {
   mvc.perform(get("/api/me/admin-quota").cookie(a.cookie())).andExpect(jsonPath("$.used").value(5)).andExpect(jsonPath("$.remaining").value(0));
   assertThat(jdbc.queryForObject("SELECT count(*) FROM answers WHERE author_id=? AND answer_kind='TANIDIK'",Long.class,a.id())).isEqualTo(5);
  }
- @Test void duplicateFirstPublicationConsumesOneSlotAndDifferentAdminsCanReply()throws Exception{
+ @Test void multipleRepliesOnOneQuestionConsumeOneDailyQuestionSlot()throws Exception{
   var a=admin();var b=admin();String q=question(a);assign(a,q,0);assign(b,q,0);var gate=new CountDownLatch(1);
-  try(var pool=Executors.newFixedThreadPool(2)){var l=pool.submit(()->{gate.await();return publish(a,q).get("id").asText();});var r=pool.submit(()->{gate.await();return publish(a,q).get("id").asText();});gate.countDown();assertThat(l.get(10,TimeUnit.SECONDS)).isEqualTo(r.get(10,TimeUnit.SECONDS));}
-  publish(b,q);mvc.perform(get("/api/questions/"+q+"/admin-answers")).andExpect(jsonPath("$.totalElements").value(2));
+  try(var pool=Executors.newFixedThreadPool(2)){var l=pool.submit(()->{gate.await();return publish(a,q).get("id").asText();});var r=pool.submit(()->{gate.await();return publish(a,q).get("id").asText();});gate.countDown();assertThat(l.get(10,TimeUnit.SECONDS)).isNotEqualTo(r.get(10,TimeUnit.SECONDS));}
+  publish(b,q);mvc.perform(get("/api/questions/"+q+"/admin-answers")).andExpect(jsonPath("$.totalElements").value(3));
   mvc.perform(get("/api/me/admin-quota").cookie(a.cookie())).andExpect(jsonPath("$.used").value(1));
  }
  @Test void removalRestoreAndEditKeepQuotaPublicationAndVerificationEvenAfterReverification()throws Exception{

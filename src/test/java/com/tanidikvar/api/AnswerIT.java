@@ -126,15 +126,37 @@ class AnswerIT {
         mvc.perform(get("/api/questions/"+q+"/my-answer")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/questions/"+q+"/answers").param("size","101")).andExpect(status().isBadRequest());
     }
-    @Test void parallelCreationIsSingleAndDifferentSecondAnswerIsRejected()throws Exception {
+    @Test void parallelAndSubsequentAnswersHaveIndependentIds()throws Exception {
         var a=member("MEMBER");String q=question(a),path="/api/questions/"+q+"/answers";var gate=new CountDownLatch(1);
         try(var pool=Executors.newFixedThreadPool(2)) {
             Callable<String> call=()->{gate.await();return mvc.perform(write("POST",path,a,Map.of("body","Kampüs hayatı hakkında bir deneyim"))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString();};
             var one=pool.submit(call);var two=pool.submit(call);gate.countDown();
-            assertThat(mapper.readTree(one.get(10,TimeUnit.SECONDS)).get("id")).isEqualTo(mapper.readTree(two.get(10,TimeUnit.SECONDS)).get("id"));
+            assertThat(mapper.readTree(one.get(10,TimeUnit.SECONDS)).get("id")).isNotEqualTo(mapper.readTree(two.get(10,TimeUnit.SECONDS)).get("id"));
         }
-        mvc.perform(write("POST",path,a,Map.of("body","Başka bir ikinci cevap denemesi"))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ANSWER_EXISTS"));
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM answers WHERE question_id=?",Integer.class,UUID.fromString(q))).isEqualTo(1);
+        mvc.perform(write("POST",path,a,Map.of("body","Başka bir ikinci cevap denemesi"))).andExpect(status().isCreated());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM answers WHERE question_id=?",Integer.class,UUID.fromString(q))).isEqualTo(3);
+    }
+    @Test void ownRepliesComeFirstOnlyForTheirAuthenticatedAuthor()throws Exception {
+        var a=member("MEMBER");var b=member("MEMBER");String q=question(a);
+        var first=answer(a,q,"İlk kullanıcının görünür katkısı");var second=answer(b,q,"İkinci kullanıcının görünür katkısı");
+        mvc.perform(get("/api/questions/"+q+"/answers").cookie(b.cookie())).andExpect(jsonPath("$.items[0].id").value(second.get("id").asText())).andExpect(jsonPath("$.items[0].owned").value(true));
+        mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].id").value(first.get("id").asText())).andExpect(jsonPath("$.items[0].owned").value(false));
+    }
+    @Test void savedQuestionFiltersArePaginatedAndPrivate()throws Exception {
+        var a=member("MEMBER");var b=member("MEMBER");String q=question(a);
+        mvc.perform(write("PUT","/api/me/saved",a,Map.of("targetType","QUESTION","targetId",q,"active",true))).andExpect(status().isOk());
+        mvc.perform(get("/api/me/saved/questions").cookie(a.cookie()).param("scope","GENERAL").param("answered","false").param("size","1")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.items[0].id").value(q));
+        mvc.perform(get("/api/me/saved/questions").cookie(a.cookie()).param("q","eşleşmeyenaranankelime")).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/me/saved/questions").cookie(b.cookie())).andExpect(jsonPath("$.totalElements").value(0));
+        mvc.perform(get("/api/me/saved/questions")).andExpect(status().isUnauthorized());
+    }
+    @Test void repliesStayUnderTheSelectedCommentAndRejectOtherAnswers()throws Exception {
+        var a=member("MEMBER");String q=question(a);var one=answer(a,q,"Ana yanıtın yeterli uzunlukta metni");var two=answer(a,q,"Diğer ana yanıtın yeterli metni");String path="/api/answers/"+one.get("id").asText()+"/comments";
+        var first=mapper.readTree(mvc.perform(write("POST",path,a,Map.of("body","Birinci yorum"))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        mvc.perform(write("POST",path,a,Map.of("body","İkinci yorum"))).andExpect(status().isCreated());
+        mvc.perform(write("POST",path,a,Map.of("body","İlk yoruma yanıt","replyToId",first.get("id").asText()))).andExpect(status().isCreated()).andExpect(jsonPath("$.replyToId").value(first.get("id").asText()));
+        mvc.perform(get(path)).andExpect(jsonPath("$.items[0].body").value("Birinci yorum")).andExpect(jsonPath("$.items[1].body").value("İlk yoruma yanıt")).andExpect(jsonPath("$.items[2].body").value("İkinci yorum"));
+        mvc.perform(write("POST","/api/answers/"+two.get("id").asText()+"/comments",a,Map.of("body","Yanlış tartışma","replyToId",first.get("id").asText()))).andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_REPLY_TARGET"));
     }
     @Test void editingKeepsPublicationAndConcurrentStaleFormCannotOverwrite()throws Exception {
         var a=member("MEMBER");String q=question(a);var original=answer(a,q,"İlk yayınlanan cevap metni burada");String path="/api/answers/"+original.get("id").asText();
@@ -151,11 +173,11 @@ class AnswerIT {
         mvc.perform(write("PUT",path+"/status",a,Map.of("deleted",true,"version",0))).andExpect(jsonPath("$.deletedAt").isNotEmpty());
         mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.totalElements").value(0));
         mvc.perform(get("/api/questions/"+q+"/my-answer").cookie(a.cookie())).andExpect(jsonPath("$.body").value(original.get("body").asText()));
-        mvc.perform(write("POST","/api/questions/"+q+"/answers",a,Map.of("body","Yeni cevap olarak yeniden oluşturma"))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("ANSWER_REMOVED"));
+        mvc.perform(write("POST","/api/questions/"+q+"/answers",a,Map.of("body","Yeni cevap olarak yeniden oluşturma"))).andExpect(status().isCreated());
         mvc.perform(write("PUT",path+"/status",a,Map.of("deleted",false,"version",1))).andExpect(jsonPath("$.deletedAt").isEmpty()).andExpect(jsonPath("$.publishedAt").value(original.get("publishedAt").asText())).andExpect(jsonPath("$.editedAt").isEmpty()).andExpect(jsonPath("$.version").value(2));
         mvc.perform(write("PUT",path+"/status",a,Map.of("deleted",false,"version",2))).andExpect(jsonPath("$.version").value(2));
         mvc.perform(write("PUT",path+"/status",a,Map.of("deleted",true,"version",0))).andExpect(status().isConflict());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM answers WHERE question_id=?",Integer.class,UUID.fromString(q))).isEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM answers WHERE question_id=?",Integer.class,UUID.fromString(q))).isEqualTo(2);
     }
     @Test void archivedQuestionAllowsReadingAndRemovalButNotEditCreateOrRestore()throws Exception {
         var owner=member("MEMBER");var other=member("MEMBER");String q=question(owner);var a=answer(other,q,"Arşivde korunacak örnek cevap metni");String path="/api/answers/"+a.get("id").asText();
@@ -197,7 +219,7 @@ class AnswerIT {
         var a=member("MEMBER");String q=question(a);String path="/api/questions/"+q+"/answers";
         for(String body:List.of("          ","kısa","x".repeat(5001)))mvc.perform(write("POST",path,a,Map.of("body",body))).andExpect(status().isBadRequest());
         var answer=answer(a,q,"Veritabanı tekilliği kontrol ediliyor");UUID id=UUID.fromString(answer.get("id").asText());
-        assertThatThrownBy(()->jdbc.update("INSERT INTO answers(id,question_id,author_id,body) VALUES (?,?,?,?)",UUID.randomUUID(),UUID.fromString(q),a.id(),"İkinci kayıt doğrudan DB denemesi")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        assertThatThrownBy(()->jdbc.update("INSERT INTO answers(id,question_id,author_id,body) VALUES (?,?,?,?)",id,UUID.fromString(q),a.id(),"Aynı kimliğin doğrudan DB denemesi")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThatThrownBy(()->jdbc.update("UPDATE answers SET answer_kind='ADMIN' WHERE id=?",id)).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThatThrownBy(()->jdbc.execute("DELETE FROM answers")).isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
         assertThatThrownBy(()->jdbc.execute("TRUNCATE answers")).isInstanceOf(org.springframework.dao.DataAccessException.class);

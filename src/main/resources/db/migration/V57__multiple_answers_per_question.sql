@@ -1,0 +1,2 @@
+ALTER TABLE answers DROP CONSTRAINT answers_question_id_author_id_answer_kind_key;
+CREATE INDEX idx_answers_author_question ON answers(question_id,author_id,answer_kind,published_at DESC);

@@ -61,10 +61,10 @@ public class CatalogRepository {
         jdbc.update("DELETE FROM university_departments WHERE university_id=?",id);
         jdbc.update("DELETE FROM universities WHERE id=?",id);
     }
-    private static final String EDUCATION = "SELECT ud.id,ud.university_id,u.name university_name,ud.department_id,d.name department_name,ud.deleted_at,ud.version,(ud.deleted_at IS NULL AND u.deleted_at IS NULL AND d.deleted_at IS NULL) available FROM university_departments ud JOIN universities u ON u.id=ud.university_id JOIN departments d ON d.id=ud.department_id ";
+    private static final String EDUCATION = "SELECT ud.id,ud.program_id,ud.university_id,u.name university_name,ud.department_id,d.name department_name,ud.deleted_at,ud.version,(ud.deleted_at IS NULL AND u.deleted_at IS NULL AND d.deleted_at IS NULL) available FROM university_departments ud JOIN universities u ON u.id=ud.university_id JOIN departments d ON d.id=ud.department_id ";
     private EducationResponse mapEducation(ResultSet rs,int n) throws SQLException {
         return new EducationResponse(rs.getObject("id",UUID.class),rs.getObject("university_id",UUID.class),rs.getString("university_name"),
-                rs.getObject("department_id",UUID.class),rs.getString("department_name"),rs.getTimestamp("deleted_at")==null?null:rs.getTimestamp("deleted_at").toInstant(),rs.getBoolean("available"),rs.getLong("version"));
+                rs.getObject("department_id",UUID.class),rs.getString("department_name"),rs.getTimestamp("deleted_at")==null?null:rs.getTimestamp("deleted_at").toInstant(),rs.getBoolean("available"),rs.getLong("version"),rs.getObject("program_id",UUID.class));
     }
     public Optional<EducationResponse> education(UUID id) { return jdbc.query(EDUCATION+"WHERE ud.id=?",this::mapEducation,id).stream().findFirst(); }
     public void lockEducationRow(UUID id) { jdbc.queryForObject("SELECT id FROM university_departments WHERE id=? FOR UPDATE",UUID.class,id); }

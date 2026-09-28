@@ -44,18 +44,31 @@ public class QuestionService {
         return discover(actor,scope,university,tag,null,null,null,null,null,null,null,"NEWEST",page,size);
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
-    public PageResponse<QuestionResponse> mine(UUID actor,String status,int page,int size) {
+    public PageResponse<QuestionResponse> mine(UUID actor,String status,QuestionScope scope,UUID university,UUID tag,UUID department,String city,Boolean answered,Boolean verifiedAnswer,String query,String sort,int page,int size) {
         String normalized=status==null?"ACTIVE":status.toUpperCase(Locale.ROOT);
         if(!Set.of("ACTIVE","ARCHIVED").contains(normalized))throw new DomainException(400,"INVALID_STATUS","Soru durumunu kontrol et.");
-        SearchQuery.page(page,size);
-        var filters=new HashMap<String,Object>();filters.put("actor",actor);filters.put("archived",normalized.equals("ARCHIVED"));
-        var rows=questions.list(filters,"NEWEST",page,size);var ids=rows.stream().map(Question::id).toList();var tags=questions.tags(ids);var summaries=statistics.summaries(ids);
-        return new PageResponse<>(rows.stream().map(q->mapper.toResponse(q,tags.getOrDefault(q.id(),List.of()),summaries.get(q.id()))).toList(),page,size,questions.count(filters));
+        return discoverFiltered(actor,null,normalized.equals("ARCHIVED"),scope,university,tag,department,null,city,answered,verifiedAnswer,query,null,sort,page,size);
     }
     @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
     public PageResponse<QuestionResponse> discover(UUID actor,QuestionScope scope,UUID university,UUID tag,UUID department,UUID admin,String city,Boolean answered,Boolean verifiedAnswer,String query,PopularPeriod period,String sort,int page,int size) {
+        return discoverFiltered(actor,null,null,scope,university,tag,department,admin,city,answered,verifiedAnswer,query,period,sort,page,size);
+    }
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public PageResponse<QuestionResponse> saved(UUID user,QuestionScope scope,UUID university,UUID tag,UUID department,String city,Boolean answered,Boolean verifiedAnswer,String query,String sort,int page,int size) {
+        return discoverFiltered(null,user,null,scope,university,tag,department,null,city,answered,verifiedAnswer,query,null,sort,page,size);
+    }
+    @Transactional(readOnly=true,isolation=Isolation.REPEATABLE_READ)
+    public PageResponse<QuestionResponse> discover(UUID actor,QuestionScope scope,UUID university,UUID tag,UUID department,UUID admin,String city,Boolean answered,Boolean verifiedAnswer,String query,PopularPeriod period,String sort,int page,int size,UUID program) {
+        return discoverFiltered(actor,null,null,scope,university,tag,department,admin,city,answered,verifiedAnswer,query,period,sort,page,size,program);
+    }
+    private PageResponse<QuestionResponse> discoverFiltered(UUID actor,UUID savedBy,Boolean archived,QuestionScope scope,UUID university,UUID tag,UUID department,UUID admin,String city,Boolean answered,Boolean verifiedAnswer,String query,PopularPeriod period,String sort,int page,int size) {
+        return discoverFiltered(actor,savedBy,archived,scope,university,tag,department,admin,city,answered,verifiedAnswer,query,period,sort,page,size,null);
+    }
+    private PageResponse<QuestionResponse> discoverFiltered(UUID actor,UUID savedBy,Boolean archived,QuestionScope scope,UUID university,UUID tag,UUID department,UUID admin,String city,Boolean answered,Boolean verifiedAnswer,String query,PopularPeriod period,String sort,int page,int size,UUID program) {
         SearchQuery.page(page,size);String search=SearchQuery.clean(query);
         var filters=new HashMap<String,Object>();
+        if(program!=null)filters.put("program",program);
+        if(savedBy!=null)filters.put("savedBy",savedBy);if(archived!=null)filters.put("archived",archived);
         if(actor!=null)filters.put("actor",actor);if(scope!=null)filters.put("scope",scope.name());
         if(university!=null)filters.put("university",university);if(tag!=null)filters.put("tag",tag);
         if(department!=null)filters.put("department",department);if(admin!=null)filters.put("admin",admin);if(!search.isEmpty())filters.put("query",search);
@@ -126,7 +139,6 @@ public class QuestionService {
     @Transactional
     public QuestionResponse update(UUID actor,UUID id,QuestionUpdateRequest request) {
         var q=find(id,true);owner(q,actor);version(q,request.version());
-        if(q.archivedAt()!=null)throw new DomainException(409,"QUESTION_ARCHIVED","Arşivlenmiş soru düzenlenemez.");
         var content=clean(request.content());var oldTags=questions.tags(List.of(id)).getOrDefault(id,List.of());references(content,q,oldTags);
         if(sameContent(q,content,oldTags))return response(q);
         questions.update(id,content);questions.tags(id,content.tagIds());return response(find(id,false));

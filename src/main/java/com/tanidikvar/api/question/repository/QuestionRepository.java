@@ -63,7 +63,8 @@ public class QuestionRepository {
     }
     private String where(Map<String,Object> p) {
         String sql=" WHERE q.deleted_at IS NULL";
-        if(p.containsKey("actor"))sql+=" AND q.author_id=:actor";else sql+=" AND q.archived_at IS NULL";
+        if(p.containsKey("savedBy"))sql+=" AND EXISTS(SELECT 1 FROM saved_items saved WHERE saved.user_id=:savedBy AND saved.target_type='QUESTION' AND saved.target_id=q.id AND saved.deleted_at IS NULL)";
+        if(p.containsKey("actor"))sql+=" AND q.author_id=:actor";else if(!p.containsKey("savedBy"))sql+=" AND q.archived_at IS NULL";
         if(p.containsKey("archived"))sql+=(Boolean.TRUE.equals(p.get("archived"))?" AND q.archived_at IS NOT NULL":" AND q.archived_at IS NULL");
         if(p.containsKey("scope"))sql+=" AND q.scope=:scope";
         if(p.containsKey("university"))sql+=" AND u.id=:university";

@@ -64,7 +64,7 @@ public class CatalogService {
         var university=catalog.find(CatalogKind.UNIVERSITY,universityId).orElseThrow(this::missing);
         var department=catalog.find(CatalogKind.DEPARTMENT,departmentId).orElseThrow(this::missing);
         boolean available=university.deletedAt()==null&&department.deletedAt()==null;
-        return new EducationResponse(department.id(),university.id(),university.name(),department.id(),department.name(),available?null:java.time.Instant.EPOCH,available,Math.max(university.version(),department.version()));
+        return new EducationResponse(department.id(),university.id(),university.name(),department.id(),department.name(),available?null:java.time.Instant.EPOCH,available,Math.max(university.version(),department.version()),catalog.findEducation(universityId,departmentId).map(EducationResponse::programId).orElse(null));
     }
     @Transactional(propagation=Propagation.MANDATORY)
     public EducationResponse lockEducation(UUID id,boolean requireActive) {

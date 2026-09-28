@@ -162,6 +162,34 @@ class MobileProductIT {
         mvc.perform(get(path)).andExpect(status().isNotFound());
     }
 
+    @Test void programFollowIsPrivateFilteredAndReceivesOnlyMatchingQuestions() throws Exception {
+        var follower=member("MEMBER");var author=member("MEMBER");
+        UUID university=UUID.fromString(create(member("MANAGER"),"UNIVERSITY","Program takibi "+UUID.randomUUID()).path("id").asText());
+        UUID department=UUID.fromString(create(member("MANAGER"),"DEPARTMENT","Bölüm "+UUID.randomUUID()).path("id").asText());
+        UUID family=UUID.randomUUID(),program=UUID.randomUUID();
+        jdbc.update("INSERT INTO program_families(id,source,source_program_group_id,name,normalized_name,degree_level) VALUES (?,'YOK_ATLAS',987654,'Takip bölümü',?,'LISANS')",family,family.toString());
+        jdbc.update("INSERT INTO programs(id,university_id,program_family_id,display_name,normalized_name) VALUES (?,?,?,'Takip bölümü',?)",program,university,family,program.toString());
+        jdbc.update("INSERT INTO university_departments(id,university_id,department_id,program_id) VALUES (?,?,?,?)",UUID.randomUUID(),university,department,program);
+        jdbc.update("INSERT INTO admission_options(id,program_id,guide_code,score_type,education_type,language,scholarship,duration_years) VALUES (?,?,?,'SAY','Örgün','Türkçe','Ücretsiz',4)",UUID.randomUUID(),program,"987654321");
+        result(write("PUT","/api/me/follows",follower,Map.of("targetType","PROGRAM","targetId",program,"active",true)),200);
+        mvc.perform(get("/api/me/follows").param("targetType","PROGRAM").header("Authorization","Bearer "+follower.cookie().getValue())).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/me/follows").param("targetType","UNIVERSITY").header("Authorization","Bearer "+follower.cookie().getValue())).andExpect(jsonPath("$.totalElements").value(0));
+        var specific=new HashMap<String,Object>(content("Bölümümde ders programı nasıl işliyor?"));specific.put("scope","UNIVERSITY_DEPARTMENT");specific.put("universityId",university);specific.put("programId",program);
+        var q=question(author,specific);
+        mvc.perform(get("/api/questions").param("programId",program.toString())).andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.items[0].id").value(q.path("id").asText()));
+        mvc.perform(get("/api/questions").param("programId",UUID.randomUUID().toString())).andExpect(jsonPath("$.totalElements").value(0));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND target_id=?",Long.class,follower.id(),UUID.fromString(q.path("id").asText()))).isEqualTo(1);
+        var generic=new HashMap<String,Object>(content("Üniversitede genel olanaklar nasıl işliyor?"));generic.put("scope","UNIVERSITY");generic.put("universityId",university);
+        var other=question(author,generic);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND target_id=?",Long.class,follower.id(),UUID.fromString(other.path("id").asText()))).isZero();
+        jdbc.update("INSERT INTO education_verifications(id,user_id,verification_type,program_id,verified_at) VALUES (?,?,'MANAGER_REVIEW',?,CURRENT_TIMESTAMP)",UUID.randomUUID(),follower.id(),program);
+        result(write("PUT","/api/me/notification-preferences",follower,Map.of("inAppEnabled",true,"emailEnabled",false,"emailFrequency","NEVER","questionRoutingEnabled",true,"version",0,"categories",Map.of("PROGRAM",false))),200);
+        specific.put("title","Bölümde yeni derslerin içeriği hakkında başka soru");
+        var muted=question(author,specific);
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM notifications WHERE user_id=? AND target_id=?",Long.class,follower.id(),UUID.fromString(muted.path("id").asText()))).isZero();
+
+    }
+
     @Test
     void bearerRetentionKeepsCollectionsPrivateAndExposesGamification() throws Exception {
         var owner = member("MEMBER");var other = member("MEMBER");
@@ -194,4 +222,75 @@ class MobileProductIT {
         mvc.perform(get("/api/gamification/profiles/" + owner.id() + "/achievements"))
                 .andExpect(status().isOk()).andExpect(jsonPath("$").isArray());
     }
+    @Test void notificationTargetsPreferencesAndReadOwnershipStayConsistent() throws Exception {
+        var owner=member("MEMBER");var author=member("MEMBER");var replier=member("MEMBER");
+        var question=question(owner,content("Bildirimden tam yoruma nasıl gidilir?"));
+        String qid=question.path("id").asText();
+        var answer=result(write("POST","/api/questions/"+qid+"/answers",author,Map.of("body","Bildirimde doğru yorum kimliğini kullanarak gidilir.")),201);
+        String aid=answer.path("id").asText();
+        mvc.perform(get("/api/answers/"+aid)).andExpect(status().isOk()).andExpect(jsonPath("$.questionId").value(qid)).andExpect(jsonPath("$.answerKind").value("COMMUNITY"));
+        var notes=result(get("/api/me/notifications").param("targetType","ANSWER").param("unread","true").header("Authorization","Bearer "+owner.cookie().getValue()),200);
+        org.assertj.core.api.Assertions.assertThat(notes.path("totalElements").asInt()).isEqualTo(1);
+        org.assertj.core.api.Assertions.assertThat(notes.path("items").get(0).path("answerId").asText()).isEqualTo(aid);
+        org.assertj.core.api.Assertions.assertThat(notes.path("items").get(0).path("questionId").asText()).isEqualTo(qid);
+        String noteId=notes.path("items").get(0).path("id").asText();
+        mvc.perform(write("PUT","/api/me/notifications/"+noteId+"/read",author,Map.of())).andExpect(status().isNotFound());
+        mvc.perform(write("PUT","/api/me/notifications/"+noteId+"/read",owner,Map.of())).andExpect(status().isNoContent());
+        mvc.perform(get("/api/me/notifications").param("targetType","ANSWER").param("unread","true").header("Authorization","Bearer "+owner.cookie().getValue())).andExpect(jsonPath("$.totalElements").value(0));
+        String commentPath="/api/answers/"+aid+"/comments";
+        var comment=result(write("POST",commentPath,owner,Map.of("body","Bu alt yoruma yanıt bekliyorum.")),201);
+        var reply=result(write("POST",commentPath,replier,Map.of("body","Doğrudan senin yorumuna yanıt veriyorum.","replyToId",comment.path("id").asText())),201);
+        mvc.perform(get(commentPath+"/"+reply.path("id").asText())).andExpect(status().isOk()).andExpect(jsonPath("$.replyToId").value(comment.path("id").asText()));
+        mvc.perform(get("/api/me/notifications").param("targetType","ANSWER_COMMENT").header("Authorization","Bearer "+owner.cookie().getValue()))
+          .andExpect(jsonPath("$.totalElements").value(1)).andExpect(jsonPath("$.items[0].targetId").value(reply.path("id").asText())).andExpect(jsonPath("$.items[0].answerId").value(aid));
+        var p=result(get("/api/me/notification-preferences").header("Authorization","Bearer "+owner.cookie().getValue()),200);
+        var payload=Map.of("version",p.path("version").asLong(),"inAppEnabled",true,"emailEnabled",false,"emailFrequency","NEVER","questionRoutingEnabled",true,"categories",Map.of("ANSWER",false,"REPLY",false));
+        var saved=result(write("PUT","/api/me/notification-preferences",owner,payload),200);
+        org.assertj.core.api.Assertions.assertThat(saved.path("categories").path("ANSWER").asBoolean()).isFalse();
+        mvc.perform(write("PUT","/api/me/notification-preferences",owner,payload)).andExpect(status().isConflict());
+        result(write("POST","/api/questions/"+qid+"/answers",replier,Map.of("body","İkinci bir yorumda bildirim tercihini kontrol ediyoruz.")),201);
+        result(write("POST",commentPath,replier,Map.of("body","Bildirim tercihinden sonra ikinci yanıt.","replyToId",comment.path("id").asText())),201);
+        mvc.perform(get("/api/me/notifications").param("targetType","ANSWER").header("Authorization","Bearer "+owner.cookie().getValue())).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/me/notifications").param("targetType","ANSWER_COMMENT").header("Authorization","Bearer "+owner.cookie().getValue())).andExpect(jsonPath("$.totalElements").value(1));
+        jdbc.update("UPDATE answers SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",UUID.fromString(aid));
+        mvc.perform(get("/api/answers/"+aid)).andExpect(status().isNotFound());
+        mvc.perform(get(commentPath+"/"+reply.path("id").asText())).andExpect(status().isNotFound());
+    }
+
+    @Test void seasonalBadgesRequireBothActivityCountAndDistinctDays() throws Exception {
+        var owner=member("MEMBER");
+        for(int index=0;index<24;index++) jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version,created_at) VALUES (?,?,'TEST_ACTIVITY',1,'TEST',?,1,?::timestamptz)",UUID.randomUUID(),owner.id(),UUID.randomUUID(),"2030-06-"+String.format("%02d",1+index%5)+" 12:00:00+03");
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM user_achievements WHERE user_id=? AND achievement_key='PREFERENCE_GUIDE'",Long.class,owner.id())).isZero();
+        jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version,created_at) VALUES (?,?,'TEST_ACTIVITY',1,'TEST',?,1,'2030-06-05 12:00:00+03')",UUID.randomUUID(),owner.id(),UUID.randomUUID());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM user_achievements WHERE user_id=? AND achievement_key='PREFERENCE_GUIDE' AND period_year=2030",Long.class,owner.id())).isEqualTo(1);
+        var singleDay=member("MEMBER");
+        for(int index=0;index<25;index++) jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version,created_at) VALUES (?,?,'TEST_ACTIVITY',1,'TEST',?,1,'2030-06-01 12:00:00+03')",UUID.randomUUID(),singleDay.id(),UUID.randomUUID());
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM user_achievements WHERE user_id=? AND achievement_key='PREFERENCE_GUIDE'",Long.class,singleDay.id())).isZero();
+    }
+
+    @Test void taskBadgesUnlockOnceAndOnlyChosenOwnedBadgesAppearOnProfile() throws Exception {
+        var owner=member("MEMBER");var other=member("MEMBER");
+        mvc.perform(get("/api/gamification/achievements")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(23));
+        question(owner,content("İlk görev rozeti ne zaman açılır?"));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM user_achievements WHERE user_id=? AND achievement_key='FIRST_QUESTION'",Long.class,owner.id())).isZero();
+        for(int index=0;index<4;index++) jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version) VALUES (?,?,'QUESTION_CREATED',5,'QUESTION',?,1)",UUID.randomUUID(),owner.id(),UUID.randomUUID());
+        // Reaching the count on a single day does not unlock a task badge.
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM user_achievements WHERE user_id=? AND achievement_key='FIRST_QUESTION'",Long.class,owner.id())).isZero();
+        for(int day=1;day<=4;day++) jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version,created_at) VALUES (?,?,'POLL_PARTICIPATION',1,'POLL',?,1,CURRENT_TIMESTAMP-(? * interval '1 day'))",UUID.randomUUID(),owner.id(),UUID.randomUUID(),day);
+
+        UUID earned=jdbc.queryForObject("SELECT id FROM user_achievements WHERE user_id=? AND achievement_key='FIRST_QUESTION'",UUID.class,owner.id());
+        question(owner,content("İkinci soruda rozet tekrarlanır mı?"));
+        org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM user_achievements WHERE user_id=? AND achievement_key='FIRST_QUESTION'",Long.class,owner.id())).isEqualTo(1);
+        mvc.perform(get("/api/gamification/profiles/"+owner.id())).andExpect(jsonPath("$.badges.length()").value(0));
+        result(write("PUT","/api/me/gamification/showcase",owner,Map.of("achievementIds",java.util.List.of(earned))),200);
+        mvc.perform(get("/api/gamification/profiles/"+owner.id())).andExpect(jsonPath("$.badges[0]").value("İlk Merak"));
+        mvc.perform(write("PUT","/api/me/gamification/showcase",other,Map.of("achievementIds",java.util.List.of(earned)))).andExpect(status().isNotFound());
+        mvc.perform(write("PUT","/api/me/gamification/showcase",owner,Map.of("achievementIds",java.util.List.of(UUID.randomUUID())))).andExpect(status().isNotFound());
+        mvc.perform(get("/api/gamification/profiles/"+owner.id())).andExpect(jsonPath("$.badges[0]").value("İlk Merak"));
+        mvc.perform(write("PUT","/api/me/gamification/showcase",owner,Map.of("achievementIds",java.util.List.of(earned,earned)))).andExpect(status().isBadRequest());
+        mvc.perform(write("PUT","/api/me/gamification/showcase",owner,Map.of("achievementIds",java.util.List.of(earned,UUID.randomUUID(),UUID.randomUUID(),UUID.randomUUID())))).andExpect(status().isBadRequest());
+        result(write("PUT","/api/me/gamification/showcase",owner,Map.of("achievementIds",java.util.List.of())),200);
+        mvc.perform(get("/api/gamification/profiles/"+owner.id())).andExpect(jsonPath("$.badges.length()").value(0));
+    }
+
 }

@@ -20,12 +20,12 @@ public class AnswerController {
     @GetMapping("/api/me/answers") @SecurityRequirement(name="accessCookie")
     @Operation(summary="Kendi topluluk yorumlarını, kaldırılmış olanlar dahil, okunabilir sorularla listeler")
     public PageResponse<OwnAnswerResponse> history(@AuthenticationPrincipal SessionPrincipal principal,
-            @RequestParam(required=false) com.tanidikvar.api.question.entity.QuestionScope scope,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
-        return answers.listMine(principal.userId(),scope,page,size);
+            @RequestParam(required=false) com.tanidikvar.api.question.entity.QuestionScope scope,@RequestParam(required=false) Boolean anonymous,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {
+        return answers.listMine(principal.userId(),scope,anonymous,page,size);
     }
     @GetMapping("/api/questions/{id}/answers")
     @Operation(summary="Görünür topluluk yorumlarını ilk yayın sırasıyla listeler")
-    public PageResponse<AnswerResponse> list(@PathVariable UUID id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {return answers.list(id,page,size);}
+    public PageResponse<AnswerResponse> list(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal principal,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size) {return answers.list(id,principal==null?null:principal.userId(),page,size);}
     @GetMapping("/api/questions/{id}/my-answer") @SecurityRequirement(name="accessCookie")
     @Operation(summary="Kendi topluluk yorumunı kaldırılmış olsa da getirir; yoksa 204")
     public ResponseEntity<AnswerResponse> mine(@PathVariable UUID id,@AuthenticationPrincipal SessionPrincipal principal) {

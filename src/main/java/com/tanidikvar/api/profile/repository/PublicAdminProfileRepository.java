@@ -21,7 +21,7 @@ public class PublicAdminProfileRepository {
  EXISTS(SELECT 1 FROM education_verifications ev WHERE ev.user_id=u.id AND ev.verified_at IS NOT NULL AND ev.deleted_at IS NULL) education_verified,
  university.name university_name,department.name department_name,p.education_status,p.class_year,p.graduation_year,p.biography,p.occupation,p.company,p.linkedin_url,p.portfolio_url,f.id avatar_file_id,u.created_at,
  (SELECT count(*) FROM answers a JOIN questions q ON q.id=a.question_id AND q.deleted_at IS NULL WHERE a.author_id=u.id AND a.answer_kind='TANIDIK' AND NOT a.anonymous AND a.deleted_at IS NULL AND a.moderated_at IS NULL) answer_count,
- (SELECT count(*) FROM answers a JOIN questions q ON q.id=a.question_id AND q.deleted_at IS NULL WHERE a.author_id=u.id AND a.answer_kind='COMMUNITY' AND a.deleted_at IS NULL AND a.moderated_at IS NULL) community_answer_count,
+ (SELECT count(*) FROM answers a JOIN questions q ON q.id=a.question_id AND q.deleted_at IS NULL WHERE a.author_id=u.id AND a.answer_kind='COMMUNITY' AND NOT a.anonymous AND a.deleted_at IS NULL AND a.moderated_at IS NULL) community_answer_count,
  (SELECT count(*) FROM answer_likes l JOIN answers a ON a.id=l.answer_id WHERE a.author_id=u.id AND l.deleted_at IS NULL AND a.deleted_at IS NULL AND a.moderated_at IS NULL) helpful_vote_count,
  (SELECT count(*) FROM questions q JOIN answers a ON a.id=q.best_answer_id WHERE a.author_id=u.id AND q.deleted_at IS NULL AND a.deleted_at IS NULL AND a.moderated_at IS NULL) best_answer_count,
  (SELECT count(DISTINCT l.user_id) FROM answer_likes l JOIN answers a ON a.id=l.answer_id WHERE a.author_id=u.id AND l.deleted_at IS NULL AND l.user_id<>u.id) helped_people_count

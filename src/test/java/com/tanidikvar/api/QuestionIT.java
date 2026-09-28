@@ -117,7 +117,7 @@ class QuestionIT {
         }
         mvc.perform(get(path)).andExpect(jsonPath("$.createdAt").value(q.get("createdAt").asText())).andExpect(jsonPath("$.editedAt").isNotEmpty());
     }
-    @Test void archiveIsReadableButNotDiscoverableAndCannotBeEdited()throws Exception {
+    @Test void archivedQuestionCanBeEditedWithoutReopening()throws Exception {
         var a=member("MEMBER");var c=content("Arşivlenecek soru başlığı burada");var q=question(a,c);String id=q.get("id").asText(),path="/api/questions/"+id;
         mvc.perform(write("POST",path+"/archive",a,Map.of("version",0))).andExpect(status().isOk()).andExpect(jsonPath("$.archivedAt").isNotEmpty());
         mvc.perform(write("POST",path+"/archive",a,Map.of("version",0))).andExpect(jsonPath("$.version").value(1));
@@ -125,8 +125,10 @@ class QuestionIT {
         mvc.perform(get("/api/questions")).andExpect(jsonPath("$.items[*].id",org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem(id))));
         mvc.perform(get("/api/me/questions").cookie(a.cookie())).andExpect(jsonPath("$.totalElements").value(0));
         mvc.perform(get("/api/me/questions").param("status","ARCHIVED").cookie(a.cookie())).andExpect(jsonPath("$.items[0].id").value(id));
-        mvc.perform(write("PUT",path,a,Map.of("version",1,"content",c))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("QUESTION_ARCHIVED"));
-        mvc.perform(write("POST",path+"/restore",a,Map.of("version",1))).andExpect(status().isOk()).andExpect(jsonPath("$.archivedAt").isEmpty()).andExpect(jsonPath("$.version").value(2));
+        mvc.perform(get("/api/me/questions").param("status","ARCHIVED").param("q","eşleşmeyenkelime").cookie(a.cookie())).andExpect(jsonPath("$.totalElements").value(0));
+        c.put("title","Arşivde düzenlenen yeni soru başlığı");
+        mvc.perform(write("PUT",path,a,Map.of("version",1,"content",c))).andExpect(status().isOk()).andExpect(jsonPath("$.archivedAt").isNotEmpty());
+        mvc.perform(write("POST",path+"/restore",a,Map.of("version",2))).andExpect(status().isOk()).andExpect(jsonPath("$.archivedAt").isEmpty()).andExpect(jsonPath("$.version").value(3));
         mvc.perform(get("/api/me/questions").cookie(a.cookie())).andExpect(jsonPath("$.items[0].id").value(id));
         jdbc.update("UPDATE questions SET deleted_at=CURRENT_TIMESTAMP WHERE id=?",UUID.fromString(id));
         mvc.perform(get(path)).andExpect(status().isNotFound());

@@ -34,11 +34,11 @@ public class AdminAnswerService {
  private String text(String body){String s=body.replaceAll("(?U)^\\s+|\\s+$","");if(s.length()<10||s.length()>5000)throw new DomainException(400,"VALIDATION_FAILED","Yorumunı kontrol et.",Map.of("body","10–5000 karakter"));return s;}
  private void assigned(UUID q,UUID id){if(!answers.assignment(q,id).assigned())throw new DomainException(409,"ASSIGNMENT_REQUIRED","Önce bu soruya yorumlayacağım diyerek atan.");}
  @Transactional(readOnly=true)
- public PageResponse<AdminAnswerResponse> list(UUID q,int page,int size){questions.requireReadable(q);return listRows(q,null,false,page,size);}
+ public PageResponse<AdminAnswerResponse> list(UUID q,UUID viewer,int page,int size){questions.requireReadable(q);page(page,size);return new PageResponse<>(answers.listForViewer(q,viewer,page,size).stream().map(a->mapper.toResponse(a,viewer)).toList(),page,size,answers.count(q,null,false,null));}
  @Transactional(readOnly=true)
  public PageResponse<AdminAnswerResponse> history(UUID author,int page,int size){return listRows(null,author,false,page,size);}
  @Transactional(readOnly=true)
- public PageResponse<AdminAnswerResponse> mine(UUID author,com.tanidikvar.api.question.entity.QuestionScope scope,int page,int size){page(page,size);String s=scope==null?null:scope.name();return new PageResponse<>(answers.list(null,author,true,s,page,size).stream().map(mapper::toResponse).toList(),page,size,answers.count(null,author,true,s));}
+ public PageResponse<AdminAnswerResponse> mine(UUID author,com.tanidikvar.api.question.entity.QuestionScope scope,Boolean anonymous,int page,int size){page(page,size);String s=scope==null?null:scope.name();return new PageResponse<>(answers.list(null,author,true,s,anonymous,page,size).stream().map(mapper::toResponse).toList(),page,size,answers.count(null,author,true,s,anonymous));}
  private PageResponse<AdminAnswerResponse> listRows(UUID q,UUID author,boolean removed,int page,int size){page(page,size);return new PageResponse<>(answers.list(q,author,removed,null,page,size).stream().map(mapper::toResponse).toList(),page,size,answers.count(q,author,removed,null));}
  @Transactional(readOnly=true)
  public OwnAdminAnswerResponse own(UUID q,UUID actor){questions.requireReadable(q);return new OwnAdminAnswerResponse(answers.own(q,actor).map(mapper::toResponse).orElse(null),answers.assignment(q,actor));}
@@ -53,9 +53,7 @@ public class AdminAnswerService {
  @Transactional
  public AdminQuotaResponse quota(UUID actor){return quota(accounts.lockActive(actor),clock.instant());}
  @Transactional
- public AdminAnswerResponse create(UUID q,UUID id,AnswerCreateRequest request){var question=questions.lock(q);var account=actor(id);UUID verification=requireAdmin(account);String body=text(request.body());var old=answers.own(q,id);
-  if(old.isPresent()){var a=old.get();unmoderated(a);if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Yorumunı geri yükleyebilirsin.");if(!a.body().equals(body))throw new DomainException(409,"ANSWER_EXISTS","Mevcut yorumunı düzenle.");return mapper.toResponse(a);}
-  active(question);Instant now=clock.instant();if(quota(account,now).remaining()==0)throw new DomainException(409,"DAILY_LIMIT","Bugünkü beş farklı soru hakkını kullandın.");
+ public AdminAnswerResponse create(UUID q,UUID id,AnswerCreateRequest request){var question=questions.lock(q);var account=actor(id);UUID verification=requireAdmin(account);String body=text(request.body());  active(question);Instant now=clock.instant();if(!answers.answeredToday(q,id,now.atZone(ZONE).toLocalDate().atStartOfDay(ZONE).toInstant())&&quota(account,now).remaining()==0)throw new DomainException(409,"DAILY_LIMIT","Bugünkü beş farklı soru hakkını kullandın.");
   UUID answer=UUID.randomUUID();answers.create(answer,q,id,verification,body,now,Boolean.TRUE.equals(request.anonymous()));return mapper.toResponse(find(answer));
  }
  @Transactional

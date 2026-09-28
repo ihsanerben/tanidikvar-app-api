@@ -14,12 +14,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 @Service
 public class AnswerService {
+    private final com.tanidikvar.api.application.service.VerificationAccessService verifications;
     private final AnswerRepository answers;
     private final AnswerMapper mapper;
     private final AccountAccessService accounts;
     private final InteractionPolicy interaction;
     private final QuestionAccessService questions;
-    public AnswerService(AnswerRepository answers,AnswerMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,QuestionAccessService questions) {
+    public AnswerService(AnswerRepository answers,AnswerMapper mapper,AccountAccessService accounts,InteractionPolicy interaction,QuestionAccessService questions,com.tanidikvar.api.application.service.VerificationAccessService verifications) {
+        this.verifications=verifications;
         this.answers=answers;this.mapper=mapper;this.accounts=accounts;this.interaction=interaction;this.questions=questions;
     }
  private void unmoderated(Answer a){if(a.moderatedAt()!=null)throw new DomainException(409,"ANSWER_MODERATED","Bu yorum Manager tarafından gizlendi. Düzenlenemez veya geri yüklenemez.");}
@@ -34,16 +36,16 @@ public class AnswerService {
         return clean;
     }
     @Transactional(readOnly=true)
-    public PageResponse<OwnAnswerResponse> listMine(UUID actor,com.tanidikvar.api.question.entity.QuestionScope scope,int page,int size) {
+    public PageResponse<OwnAnswerResponse> listMine(UUID actor,com.tanidikvar.api.question.entity.QuestionScope scope,Boolean anonymous,int page,int size) {
         if(page<0||page>10000||size<1||size>100)throw new DomainException(400,"INVALID_REQUEST","Sayfa sınırlarını kontrol et.");
-        return new PageResponse<>(answers.listMine(actor,scope==null?null:scope.name(),page,size).stream()
-                .map(entry->new OwnAnswerResponse(mapper.toResponse(entry.answer()),entry.questionTitle())).toList(),page,size,answers.countMine(actor,scope==null?null:scope.name()));
+        return new PageResponse<>(answers.listMine(actor,scope==null?null:scope.name(),anonymous,page,size).stream()
+                .map(entry->new OwnAnswerResponse(mapper.toResponse(entry.answer()),entry.questionTitle())).toList(),page,size,answers.countMine(actor,scope==null?null:scope.name(),anonymous));
     }
     @Transactional(readOnly=true)
-    public PageResponse<AnswerResponse> list(UUID question,int page,int size) {
+    public PageResponse<AnswerResponse> list(UUID question,UUID viewer,int page,int size) {
         if(page<0||page>10000||size<1||size>100)throw new DomainException(400,"INVALID_REQUEST","Sayfa sınırlarını kontrol et.");
         questions.requireReadable(question);
-        return new PageResponse<>(answers.list(question,page,size).stream().map(mapper::toResponse).toList(),page,size,answers.count(question));
+        return new PageResponse<>(answers.list(question,viewer,page,size).stream().map(a->mapper.toResponse(a,viewer)).toList(),page,size,answers.count(question));
     }
     @Transactional(readOnly=true)
     public PageResponse<AnswerResponse> publicHistory(UUID author,int page,int size) {
@@ -56,16 +58,14 @@ public class AnswerService {
     }
     @Transactional
     public AnswerResponse create(UUID question,UUID actor,AnswerCreateRequest request) {
-        if(Boolean.TRUE.equals(request.anonymous()))throw new DomainException(403,"TANIDIK_REQUIRED","Anonim yanıt yalnız Tanıdıklar içindir.");
         var q=questions.lock(question);actor(actor);String text=body(request.body());
-        var existing=answers.own(question,actor);
-        if(existing.isPresent()) {
-            var a=existing.get();unmoderated(a);
-            if(a.deletedAt()!=null)throw new DomainException(409,"ANSWER_REMOVED","Kaldırdığın yorumu geri yükleyebilirsin.");
-            if(!a.body().equals(text))throw new DomainException(409,"ANSWER_EXISTS","Bu soruya zaten yorum verdin. Mevcut yorumunı düzenle.");
-            return mapper.toResponse(a);
+        boolean anonymous=Boolean.TRUE.equals(request.anonymous());
+        if(anonymous){
+            var account=accounts.lockActive(actor);
+            if(account.getAuthority()!=com.tanidikvar.api.auth.entity.Authority.TANIDIK || !verifications.approved(actor,account.getActiveVerificationApplicationId()))
+                throw new DomainException(403,"TANIDIK_REQUIRED","Anonim yanıt yalnız güncel Tanıdık statüsüne sahip kişiler içindir.");
         }
-        active(q);UUID id=UUID.randomUUID();answers.create(id,question,actor,text);return mapper.toResponse(find(id));
+        active(q);UUID id=UUID.randomUUID();answers.create(id,question,actor,text,anonymous);return mapper.toResponse(find(id));
     }
     @Transactional
     public AnswerResponse update(UUID id,UUID actor,AnswerUpdateRequest request) {

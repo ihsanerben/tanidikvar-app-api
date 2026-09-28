@@ -4,8 +4,13 @@ import com.tanidikvar.api.answer.entity.Answer;
 import org.springframework.stereotype.Component;
 @Component
 public class AnswerMapper {
-    public AnswerResponse toResponse(Answer a) {
-        return new AnswerResponse(a.id(),a.questionId(),a.authorName()==null?null:a.authorId(),a.authorName()==null?"Katılımcı":a.authorName(),
-                a.authorName()==null?null:a.avatarFileId(),a.authorName()==null?null:a.educationStatus(),a.authorName()!=null&&a.activeAdmin(),a.authorName()==null?null:a.universityName(),a.authorName()==null?null:a.departmentName(),"COMMUNITY",a.body(),a.publishedAt(),a.editedAt(),a.deletedAt(),a.moderatedAt(),a.likeCount(),a.version());
+    public AnswerResponse toResponse(Answer a) { return toResponse(a,null); }
+    public AnswerResponse toResponse(Answer a,java.util.UUID viewer) {
+        boolean visible=a.authorName()!=null&&!a.anonymous();
+        return new AnswerResponse(a.id(),a.questionId(),visible?a.authorId():null,
+                a.anonymous()?"Anonim Tanıdık":visible?a.authorName():"Katılımcı",
+                visible?a.avatarFileId():null,visible?a.educationStatus():null,a.anonymous()||visible&&a.activeAdmin(),
+                visible?a.universityName():null,visible?a.departmentName():null,"COMMUNITY",a.body(),a.publishedAt(),
+                a.editedAt(),a.deletedAt(),a.moderatedAt(),a.likeCount(),a.version(),a.authorId().equals(viewer),a.anonymous());
     }
 }
