@@ -67,6 +67,15 @@ class QuestionIT {
     Actor member(String role)throws Exception {var a=actor(role);if(role.equals("MANAGER"))return a;TestAvatar.ready(jdbc,a.id());mvc.perform(write("PUT","/api/me/profile",a,profile("YKS_ADAYI",0))).andExpect(status().isOk());return a;}
     Map<String,Object> content(String title) {var c=new HashMap<String,Object>();c.put("title",title);c.put("scope","GENERAL");c.put("tagIds",List.of());return c;}
     JsonNode question(Actor a,Map<String,Object> c)throws Exception {return mapper.readTree(mvc.perform(write("POST","/api/questions",a,Map.of("requestId",UUID.randomUUID(),"content",c))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());}
+    @Test void newQuestionReceivesRevisedTenPointCredit()throws Exception {
+        var author=member("MEMBER");var commenter=member("MEMBER");var created=question(author,content("Yeni katkı puanı nasıl hesaplanır?"));
+        Integer points=jdbc.queryForObject("SELECT points FROM point_events WHERE source_type='QUESTION' AND source_id=?",Integer.class,UUID.fromString(created.get("id").asText()));
+        assertThat(points).isEqualTo(10);
+        var answer=mapper.readTree(mvc.perform(write("POST","/api/questions/"+created.get("id").asText()+"/answers",commenter,Map.of("body","Bu konuda kendi deneyimimi paylaşmak isterim."))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(jdbc.queryForObject("SELECT points FROM point_events WHERE source_type='ANSWER' AND source_id=?",Integer.class,UUID.fromString(answer.get("id").asText()))).isEqualTo(5);
+        var reply=mapper.readTree(mvc.perform(write("POST","/api/answers/"+answer.get("id").asText()+"/comments",author,Map.of("body","Teşekkürler!"))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
+        assertThat(jdbc.queryForObject("SELECT points FROM point_events WHERE source_type='ANSWER_COMMENT' AND source_id=?",Integer.class,UUID.fromString(reply.get("id").asText()))).isEqualTo(5);
+    }
     @Test void publicReadingProfileGateCsrfAndOwnership()throws Exception {
         var incomplete=actor("MEMBER");var owner=member("MEMBER");var admin=member("TANIDIK");var manager=member("MEMBER");
         var c=content("Üniversitede kampüs hayatı nasıl?");var body=Map.of("requestId",UUID.randomUUID(),"content",c);

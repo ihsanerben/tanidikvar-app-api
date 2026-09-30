@@ -1,5 +1,7 @@
 package com.tanidikvar.api;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -71,6 +73,11 @@ class MobileProductIT {
                 .andReturn().getResponse().getContentAsString());
     }
 
+    @Test void catalogCitiesArePublic() throws Exception {
+        mvc.perform(get("/api/statistics/cities")).andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray());
+    }
+
     @Test
     void bearerProductJourneyPreservesOwnershipVersionsAndCatalogContracts() throws Exception {
         var owner = member("MEMBER");
@@ -93,15 +100,19 @@ class MobileProductIT {
         result(write("PUT", "/api/questions/" + id + "/like", contributor, Map.of("liked", true, "version", 0)), 200);
         mvc.perform(write("PUT", "/api/questions/" + id + "/like", contributor, Map.of("liked", false, "version", 0)))
                 .andExpect(status().isConflict());
-        result(write("PUT", "/api/answers/" + answerId + "/like", owner, Map.of("liked", true)), 200);
+        mvc.perform(write("PUT", "/api/answers/" + answerId + "/like", owner, Map.of("liked", true))).andExpect(status().isForbidden());
         var comment = result(write("POST", "/api/answers/" + answerId + "/comments", owner,
                 Map.of("body", "Yanıtın için teşekkür ederim.")), 201);
         String commentPath = "/api/answers/" + answerId + "/comments/" + comment.path("id").asText();
         mvc.perform(write("PUT", commentPath, contributor, Map.of("body", "Başkasının yorumunu değiştiremem.", "version", 0)))
                 .andExpect(status().isForbidden());
-        result(write("PUT", commentPath, owner, Map.of("body", "Ayrıntılı yanıtın için teşekkür ederim.", "version", 0)), 200);
-        mvc.perform(write("PUT", "/api/questions/" + id + "/best-answer", owner, Map.of("answerId", answerId)))
-                .andExpect(status().isNoContent());
+        assertThat(comment.path("editedAt").isNull()).isTrue();
+        var editedComment = result(write("PUT", commentPath, owner, Map.of("body", "Ayrıntılı yanıtın için teşekkür ederim.", "version", 0)), 200);
+        assertThat(editedComment.path("editedAt").asText()).isNotBlank();
+        assertThat(editedComment.path("createdAt")).isEqualTo(comment.path("createdAt"));
+        mvc.perform(get(commentPath)).andExpect(status().isOk())
+                .andExpect(jsonPath("$.editedAt").value(editedComment.path("editedAt").asText()));
+        mvc.perform(write("PUT", "/api/questions/" + id + "/best-answer", owner, Map.of("answerId", answerId))).andExpect(status().isForbidden());
         mvc.perform(write("PUT", "/api/questions/" + id, contributor,
                 Map.of("content", content("Yetkisiz soru düzenleme denemesi"), "version", question.path("version").asLong())))
                 .andExpect(status().isForbidden());
@@ -270,7 +281,7 @@ class MobileProductIT {
 
     @Test void taskBadgesUnlockOnceAndOnlyChosenOwnedBadgesAppearOnProfile() throws Exception {
         var owner=member("MEMBER");var other=member("MEMBER");
-        mvc.perform(get("/api/gamification/achievements")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(23));
+        mvc.perform(get("/api/gamification/achievements")).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(24));
         question(owner,content("İlk görev rozeti ne zaman açılır?"));
         org.assertj.core.api.Assertions.assertThat(jdbc.queryForObject("SELECT count(*) FROM user_achievements WHERE user_id=? AND achievement_key='FIRST_QUESTION'",Long.class,owner.id())).isZero();
         for(int index=0;index<4;index++) jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version) VALUES (?,?,'QUESTION_CREATED',5,'QUESTION',?,1)",UUID.randomUUID(),owner.id(),UUID.randomUUID());
@@ -293,4 +304,24 @@ class MobileProductIT {
         mvc.perform(get("/api/gamification/profiles/"+owner.id())).andExpect(jsonPath("$.badges.length()").value(0));
     }
 
+    @Test void achievementCatalogIconsAreUnique() {
+        var icons = jdbc.queryForList("SELECT icon FROM achievement_definitions", String.class);
+        assertThat(icons).hasSize(24).doesNotHaveDuplicates();
+        assertThat(jdbc.queryForObject("SELECT icon FROM achievement_definitions WHERE achievement_key='TENURE_5'",String.class)).isEqualTo("🌲🌲");
+    }
+
+    @Test void fiveYearTanidikBadgeUnlocksAtFiveHundredPositiveEvents() throws Exception {
+        var manager = member("MANAGER");
+        var tanidik = member("TANIDIK");
+        var university = create(manager,"UNIVERSITY","Beş Yıl Üniversitesi " + UUID.randomUUID());
+        var department = create(manager,"DEPARTMENT","Beş Yıl Bölümü " + UUID.randomUUID());
+        var relation = result(write("POST","/api/manager/university-departments",manager,Map.of(
+                "universityId",university.path("id").asText(),"departmentId",department.path("id").asText(),"reason","Rozet kazanım testi")),201);
+        jdbc.update("INSERT INTO admin_applications(id,applicant_id,request_id,submitted_first_name,submitted_last_name,education_status,university_department_id,university_name,department_name,profile_version,status,reviewed_by,reviewed_at,university_id,department_id,cover_letter) VALUES (?,?,?,?,?,?,?,?,?,?,'APPROVED',?,CURRENT_TIMESTAMP-interval '6 years',?,?,?)",
+                UUID.randomUUID(),tanidik.id(),UUID.randomUUID(),"Ada","Yılmaz","UNIVERSITE_OGRENCISI",UUID.fromString(relation.path("id").asText()),"Beş Yıl Üniversitesi","Beş Yıl Bölümü",0,manager.id(),UUID.fromString(university.path("id").asText()),UUID.fromString(department.path("id").asText()),"Doğrulanmış deneyim paylaşımı için yeterli açıklama metnidir.");
+        jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version) SELECT gen_random_uuid(),?,'TEST_ACTIVITY',1,'TEST',gen_random_uuid(),1 FROM generate_series(1,499)",tanidik.id());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_achievements WHERE user_id=? AND achievement_key='TENURE_5'",Long.class,tanidik.id())).isZero();
+        jdbc.update("INSERT INTO point_events(id,user_id,event_type,points,source_type,source_id,policy_version) VALUES (?,?,'TEST_ACTIVITY',1,'TEST',?,1)",UUID.randomUUID(),tanidik.id(),UUID.randomUUID());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM user_achievements WHERE user_id=? AND achievement_key='TENURE_5'",Long.class,tanidik.id())).isEqualTo(1);
+    }
 }

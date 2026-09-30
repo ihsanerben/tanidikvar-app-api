@@ -120,6 +120,29 @@ class ProfileCatalogIT {
         mvc.perform(get("/api/me").cookie(member.cookie())).andExpect(jsonPath("$.role").value("YKS_ADAYI")).andExpect(jsonPath("$.profileCompleted").value(true));
         interaction.requireCompleted(member.id());
     }
+    @Test void contributionSummaryRequiresSessionAndStartsAtZero() throws Exception {
+        var member = actor("MEMBER");
+        mvc.perform(get("/api/me/contribution-summary")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/me/contribution-summary").cookie(member.cookie()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.questionCount").value(0))
+                .andExpect(jsonPath("$.commentCount").value(0))
+                .andExpect(jsonPath("$.experienceCount").value(0))
+                .andExpect(jsonPath("$.pollCount").value(0));
+    }
+    @Test void publicContributionSummaryNeedsVisibleProfileAndStartsAtZero() throws Exception {
+        var member = actor("MEMBER");
+        mvc.perform(get("/api/profiles/" + member.id() + "/contribution-summary"))
+                .andExpect(status().isNotFound());
+        mvc.perform(write("PUT", "/api/me/profile", member, profile("YKS_ADAYI", 0)))
+                .andExpect(status().isOk());
+        mvc.perform(get("/api/profiles/" + member.id() + "/contribution-summary"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.questionCount").value(0))
+                .andExpect(jsonPath("$.commentCount").value(0))
+                .andExpect(jsonPath("$.experienceCount").value(0))
+                .andExpect(jsonPath("$.pollCount").value(0));
+    }
     @Test void profileOwnershipAndAuthorityCannotBeOverriddenByBody()throws Exception{
         var member=actor("MEMBER");var victim=actor("MEMBER");var body=profile("YKS_ADAYI",0);body.put("userId",victim.id());body.put("authority","MANAGER");
         mvc.perform(write("PUT","/api/me/profile",member,body)).andExpect(status().isOk());
@@ -247,22 +270,91 @@ class ProfileCatalogIT {
         evaluation.put("rating",5);mvc.perform(write("PUT","/api/evaluations",member,evaluation)).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1));
         mvc.perform(get("/api/evaluations").param("universityId",university).param("programId",program)).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
         mvc.perform(get("/api/evaluations/summary").param("universityId",university).param("programId",program)).andExpect(status().isOk()).andExpect(jsonPath("$.averageRating").value(5.0)).andExpect(jsonPath("$.evaluationCount").value(1));
-        mvc.perform(get("/api/gamification/profiles/"+member.id())).andExpect(jsonPath("$.totalPoints").value(8));
+        mvc.perform(get("/api/gamification/profiles/"+member.id())).andExpect(jsonPath("$.totalPoints").value(1));
+        mvc.perform(get("/api/evaluations/criteria").param("universityId",university).param("programId",program)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(8)).andExpect(jsonPath("$[0].voteCount").value(1)).andExpect(jsonPath("$[1].voteCount").value(0));
+        evaluation.put("criterionKey","CAMPUS");evaluation.put("rating",3);
+        mvc.perform(write("PUT","/api/evaluations",member,evaluation)).andExpect(status().isOk());
+        evaluation.put("rating",4);mvc.perform(write("PUT","/api/evaluations",member,evaluation)).andExpect(status().isOk());
+        mvc.perform(get("/api/evaluations/criteria").param("universityId",university).param("programId",program)).andExpect(jsonPath("$[3].averageRating").value(4.0)).andExpect(jsonPath("$[3].voteCount").value(1)).andExpect(jsonPath("$[3].distribution[3]").value(1));
+        mvc.perform(get("/api/evaluations/my-ratings").param("universityId",university).param("programId",program)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/evaluations/my-ratings").cookie(member.cookie()).param("universityId",university).param("programId",program)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(2));
+        mvc.perform(get("/api/evaluations/my-ratings").cookie(manager.cookie()).param("universityId",university).param("programId",program)).andExpect(jsonPath("$.length()").value(0));
+        mvc.perform(get("/api/gamification/profiles/"+member.id())).andExpect(jsonPath("$.totalPoints").value(1));
+        mvc.perform(get("/api/evaluations/summary").param("universityId",university).param("programId",program)).andExpect(jsonPath("$.averageRating").value(4.5)).andExpect(jsonPath("$.evaluationCount").value(1));
+        try(var pool=Executors.newFixedThreadPool(2)){
+            var start=new CountDownLatch(1);
+            var first=pool.submit(()->{start.await();return mvc.perform(write("PUT","/api/evaluations",member,Map.of("universityId",university,"criterionKey","EDUCATION","rating",3))).andReturn().getResponse().getStatus();});
+            var second=pool.submit(()->{start.await();return mvc.perform(write("PUT","/api/evaluations",member,Map.of("universityId",university,"criterionKey","CAMPUS","rating",5))).andReturn().getResponse().getStatus();});
+            start.countDown();assertThat(first.get(10,TimeUnit.SECONDS)).isEqualTo(200);assertThat(second.get(10,TimeUnit.SECONDS)).isEqualTo(200);
+        }
+        mvc.perform(get("/api/evaluations/my-ratings").cookie(member.cookie()).param("universityId",university)).andExpect(jsonPath("$.length()").value(2));
+        mvc.perform(get("/api/evaluations/summary").param("universityId",university)).andExpect(jsonPath("$.evaluationCount").value(1)).andExpect(jsonPath("$.averageRating").value(4.0));
+        evaluation.put("criterionKey","INVALID");mvc.perform(write("PUT","/api/evaluations",member,evaluation)).andExpect(status().isBadRequest());evaluation.put("criterionKey","GENERAL");
         evaluation.put("programId",UUID.randomUUID());mvc.perform(write("PUT","/api/evaluations",member,evaluation)).andExpect(status().isNotFound());
     }
-    @Test void tanidikPollCreationAndVerifiedVotingAreEnforced()throws Exception{
+    @Test void tanidikPollCreationAndUniversityStudentVotingAreEnforced()throws Exception{
         var tanidik=actor("TANIDIK");var member=actor("MEMBER");var manager=actor("MANAGER");var ids=education(manager);String university=ids.get("universityId").asText(),department=ids.get("departmentId").asText();
         var relation=mapper.readTree(mvc.perform(write("POST","/api/manager/university-departments",manager,Map.of("universityId",university,"departmentId",department))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());String program=relation.get("id").asText();
         for(var actor:List.of(tanidik,member)){var profile=profile("UNIVERSITE_OGRENCISI",0);profile.put("universityId",university);profile.put("departmentId",department);profile.put("classYear",2);mvc.perform(write("PUT","/api/me/profile",actor,profile)).andExpect(status().isOk());}
         UUID application=UUID.randomUUID();jdbc.update("INSERT INTO admin_applications(id,applicant_id,request_id,submitted_first_name,submitted_last_name,education_status,university_department_id,university_name,department_name,profile_version,status,reviewed_by,reviewed_at,university_id,department_id,cover_letter) VALUES (?,?,?,?,?,?,?,?,?,?,'APPROVED',?,CURRENT_TIMESTAMP,?,?,?)",application,tanidik.id(),UUID.randomUUID(),"Ada","Yılmaz","UNIVERSITE_OGRENCISI",UUID.fromString(program),"Üniversite","Bölüm",0,manager.id(),UUID.fromString(university),UUID.fromString(department),"Doğrulanmış deneyim paylaşımı için yeterli açıklama metnidir.");
         jdbc.update("UPDATE users SET active_verification_application_id=? WHERE id=?",application,tanidik.id());
         jdbc.update("INSERT INTO education_verifications(id,user_id,verification_type,verified_at,university_department_id) VALUES (?,?, 'MANAGER_REVIEW',CURRENT_TIMESTAMP,?)",UUID.randomUUID(),tanidik.id(),UUID.fromString(program));
-        var created=mapper.readTree(mvc.perform(write("POST","/api/polls",tanidik,Map.of("universityId",university,"programId",program,"question","Kampüse ulaşımda en iyi seçenek hangisi?","options",List.of("Metro","Otobüs","Yürüyüş"),"verifiedOnly",true))).andExpect(status().isCreated()).andExpect(jsonPath("$.options.length()").value(3)).andReturn().getResponse().getContentAsString());
+        var created=mapper.readTree(mvc.perform(write("POST","/api/polls",tanidik,Map.of("universityId",university,"programId",program,"question","Kampüse ulaşımda en iyi seçenek hangisi?","options",List.of("Metro","Otobüs","Yürüyüş"),"verifiedOnly",true))).andExpect(status().isCreated()).andExpect(jsonPath("$.options.length()").value(3)).andExpect(jsonPath("$.activeAdmin").value(true)).andExpect(jsonPath("$.educationStatus").value("UNIVERSITE_OGRENCISI")).andReturn().getResponse().getContentAsString());
         String poll=created.get("id").asText(),option=created.get("options").get(0).get("id").asText();
-        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",member,Map.of("optionId",option))).andExpect(status().isForbidden());
-        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",tanidik,Map.of("optionId",option))).andExpect(status().isOk()).andExpect(jsonPath("$.totalVotes").value(1)).andExpect(jsonPath("$.verifiedVoteCount").value(1));
+        mvc.perform(write("POST","/api/polls",member,Map.of("universityId",university,"question","Öğrenci hesabı anket açabilir mi?","options",List.of("Evet","Hayır"),"verifiedOnly",false))).andExpect(status().isForbidden());
+        var otherEducation=education(manager);String otherUniversity=otherEducation.get("universityId").asText();
+        mvc.perform(write("POST","/api/polls",tanidik,Map.of("universityId",otherUniversity,"question","Başka üniversitede anket açabilir miyim?","options",List.of("Evet","Hayır"),"verifiedOnly",false))).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CONTEXT_TANIDIK_REQUIRED"));
+        var outsider=actor("MEMBER");var outsiderProfile=profile("UNIVERSITE_OGRENCISI",0);outsiderProfile.put("universityId",otherUniversity);outsiderProfile.put("departmentId",otherEducation.get("departmentId").asText());outsiderProfile.put("classYear",2);
+        mvc.perform(write("PUT","/api/me/profile",outsider,outsiderProfile)).andExpect(status().isOk());
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",outsider,Map.of("optionId",option))).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CONTEXT_MEMBERSHIP_REQUIRED"));
+        var graduate=actor("MEMBER");var graduateProfile=profile("MEZUN",0);graduateProfile.put("universityId",university);graduateProfile.put("departmentId",department);graduateProfile.put("graduationYear",2025);
+        mvc.perform(write("PUT","/api/me/profile",graduate,graduateProfile)).andExpect(status().isOk());
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",graduate,Map.of("optionId",option))).andExpect(status().isForbidden()).andExpect(jsonPath("$.code").value("CONTEXT_MEMBERSHIP_REQUIRED"));
+
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",member,Map.of("optionId",option))).andExpect(status().isOk());
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",tanidik,Map.of("optionId",option))).andExpect(status().isOk()).andExpect(jsonPath("$.totalVotes").value(2)).andExpect(jsonPath("$.verifiedVoteCount").value(1));
         mvc.perform(get("/api/polls").param("universityId",university).param("programId",program)).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/me/poll-votes").param("pollIds",poll)).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/me/poll-votes").cookie(tanidik.cookie()).param("pollIds",poll)).andExpect(status().isOk()).andExpect(jsonPath("$[0].optionId").value(option));
+        mvc.perform(get("/api/me/poll-votes").cookie(member.cookie()).param("pollIds",poll)).andExpect(status().isOk()).andExpect(jsonPath("$.length()").value(1));
+        String secondOption=created.get("options").get(1).get("id").asText();
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",tanidik,Map.of("optionId",secondOption))).andExpect(status().isOk()).andExpect(jsonPath("$.totalVotes").value(2));
+        mvc.perform(get("/api/me/poll-votes").cookie(tanidik.cookie()).param("pollIds",poll)).andExpect(jsonPath("$[0].optionId").value(secondOption));
+
         mvc.perform(get("/api/tanidiklar").param("universityId",university).param("departmentId",department).param("classYear","2").param("verified","true")).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].activeTanidik").value(true)).andExpect(jsonPath("$.items[0].educationVerified").value(true)).andExpect(jsonPath("$.items[0].classYear").value(2));
+        jdbc.update("UPDATE user_profiles SET education_status='MEZUN',graduation_year=2025,class_year=NULL WHERE user_id=?",tanidik.id());
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",tanidik,Map.of("optionId",option))).andExpect(status().isOk()).andExpect(jsonPath("$.totalVotes").value(2)).andExpect(jsonPath("$.activeAdmin").value(true)).andExpect(jsonPath("$.educationStatus").value("MEZUN"));
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",tanidik,Map.of("optionId",secondOption))).andExpect(status().isOk()).andExpect(jsonPath("$.totalVotes").value(2));
+        jdbc.update("UPDATE user_profiles SET university_id=? WHERE user_id=?",UUID.fromString(otherUniversity),tanidik.id());
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",tanidik,Map.of("optionId",option))).andExpect(status().isForbidden());
+        jdbc.update("UPDATE user_profiles SET university_id=? WHERE user_id=?",UUID.fromString(university),tanidik.id());
+        jdbc.update("UPDATE users SET active_verification_application_id=NULL WHERE id=?",tanidik.id());
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",tanidik,Map.of("optionId",option))).andExpect(status().isForbidden());
+        mvc.perform(get("/api/polls/"+poll)).andExpect(status().isOk()).andExpect(jsonPath("$.activeAdmin").value(false));
+        jdbc.update("UPDATE polls SET closes_at=CURRENT_TIMESTAMP - INTERVAL '1 minute' WHERE id=?",UUID.fromString(poll));
+        mvc.perform(write("PUT","/api/polls/"+poll+"/vote",member,Map.of("optionId",option))).andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("POLL_CLOSED"));
+    }
+    @Test void universityExperiencesSupportFilteringOwnershipAndReports() throws Exception {
+        var manager=actor("MANAGER");var member=actor("MEMBER");var outsider=actor("MEMBER");
+        var ids=education(manager);String university=ids.get("universityId").asText();
+        var p=profile("UNIVERSITE_OGRENCISI",0);p.put("universityId",university);p.put("departmentId",ids.get("departmentId").asText());p.put("classYear",2);
+        mvc.perform(write("PUT","/api/me/profile",member,p)).andExpect(status().isOk());
+        mvc.perform(write("PUT","/api/me/profile",outsider,profile("YKS_ADAYI",0))).andExpect(status().isOk());
+        var body=Map.of("universityId",university,"templateType","WHY_I_CHOSE","title","Üniversite tercih deneyimim","body","Üniversitenin kampüs olanakları tercihimi belirleyen önemli bir etkendi.","sentiment","NEUTRAL");
+        mvc.perform(write("POST","/api/experiences",outsider,body)).andExpect(status().isForbidden());
+        var created=mapper.readTree(mvc.perform(write("POST","/api/experiences",member,body)).andExpect(status().isCreated()).andExpect(jsonPath("$.activeAdmin").value(false)).andReturn().getResponse().getContentAsString());
+        String id=created.get("id").asText();
+        mvc.perform(get("/api/experiences").param("universityId",university).param("templateType","WHY_I_CHOSE")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
+        mvc.perform(get("/api/experiences").param("universityId",university).param("templateType","CHOOSE_AGAIN")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
+        var edit=Map.of("title","Güncellenen tercih deneyimim","body","Kampüsün ulaşım olanakları da kararımda önemli bir yer tutuyordu.","version",0);
+        mvc.perform(write("PUT","/api/experiences/"+id,outsider,edit)).andExpect(status().isForbidden());
+        mvc.perform(write("PUT","/api/experiences/"+id,member,edit)).andExpect(status().isOk()).andExpect(jsonPath("$.version").value(1)).andExpect(jsonPath("$.editedAt").isNotEmpty());
+        mvc.perform(write("PUT","/api/experiences/"+id,member,edit)).andExpect(status().isConflict());
+        mvc.perform(write("POST","/api/experiences/"+id+"/reports",outsider,Map.of("reason","İçeriğin topluluk kuralları açısından incelenmesini istiyorum."))).andExpect(status().isCreated());
+        mvc.perform(write("POST","/api/experiences/"+id+"/reports",outsider,Map.of("reason","İçeriğin tekrar incelenmesini istiyorum."))).andExpect(status().isConflict());
+        mvc.perform(get("/api/manager/content-reports").cookie(manager.cookie()).param("q","Güncellenen tercih deneyimim")).andExpect(status().isOk()).andExpect(jsonPath("$.items[0].targetType").value("EXPERIENCE")).andExpect(jsonPath("$.items[0].universityId").value(university));
+        mvc.perform(write("PUT","/api/evaluations",member,Map.of("universityId",university,"rating",4))).andExpect(status().isOk());
+        mvc.perform(write("PUT","/api/evaluations",outsider,Map.of("universityId",university,"rating",4))).andExpect(status().isForbidden());
     }
     @Test void adminsOnlyCreateTagsAndNeedACompletedProfile()throws Exception{
         var admin=actor("TANIDIK");var manager=actor("MANAGER");
@@ -331,7 +423,7 @@ class ProfileCatalogIT {
         mvc.perform(get("/api/questions").param("city","İSTANBUL").param("answered","true").param("verifiedAnswer","false")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(1));
         mvc.perform(get("/api/questions").param("verifiedAnswer","true")).andExpect(status().isOk()).andExpect(jsonPath("$.totalElements").value(0));
     }
-    @Test void lowQualityDuplicateAndSelfVoteDoNotAwardPointsAndCreateFraudSignals()throws Exception{
+    @Test void visibleCommentsEarnFivePointsAndRetiredVotesEarnNone()throws Exception{
         var author=actor("MEMBER");var responder=actor("MEMBER");var profile=profile("YKS_ADAYI",0);mvc.perform(write("PUT","/api/me/profile",author,profile)).andExpect(status().isOk());mvc.perform(write("PUT","/api/me/profile",responder,profile("YKS_ADAYI",0))).andExpect(status().isOk());
         String first=mapper.readTree(mvc.perform(write("POST","/api/questions",author,Map.of("requestId",UUID.randomUUID(),"content",Map.of("title","Kalite koruması birinci test sorusu","scope","GENERAL","tagIds",List.of())))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();
         String second=mapper.readTree(mvc.perform(write("POST","/api/questions",author,Map.of("requestId",UUID.randomUUID(),"content",Map.of("title","Kalite koruması ikinci test sorusu","scope","GENERAL","tagIds",List.of())))).andExpect(status().isCreated()).andReturn().getResponse().getContentAsString()).get("id").asText();
@@ -341,7 +433,7 @@ class ProfileCatalogIT {
         mvc.perform(write("POST","/api/questions/"+second+"/answers",responder,Map.of("body",body))).andExpect(status().isCreated());
         jdbc.update("INSERT INTO answer_likes(answer_id,user_id) VALUES (?,?)",UUID.fromString(answer.get("id").asText()),responder.id());
         assertThat(jdbc.queryForObject("SELECT coalesce(sum(points),0) FROM point_events WHERE user_id=? AND event_type='ANSWER_CREATED'",Long.class,responder.id())).isEqualTo(10);
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM gamification_fraud_signals WHERE signal_type IN ('LOW_QUALITY_ANSWER','DUPLICATE_CONTENT','SELF_VOTE')",Long.class)).isGreaterThanOrEqualTo(3);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM point_events WHERE event_type IN ('HELPFUL_RECEIVED','BEST_ANSWER') AND points<>0",Long.class)).isZero();
     }
     @Test void followedContextActivitiesAchievementsAndTitlesCreatePreferenceAwareNotifications()throws Exception{
         var follower=actor("MEMBER");var campusMember=actor("MEMBER");var mutedMember=actor("MEMBER");var contributor=actor("TANIDIK");var manager=actor("MANAGER");var ids=education(manager);UUID university=UUID.fromString(ids.get("universityId").asText());

@@ -153,17 +153,12 @@ class EngagementIT {
         mvc.perform(write("PUT","/api/answers/"+answer.get("id").asText()+"/status",a,Map.of("deleted",false,"version",1))).andExpect(status().isOk());
         assertThat(stats(q).get("communityAnswerCount").asLong()).isEqualTo(1);
     }
-    @Test void answerLikesAreIdempotentCountedAndClosedWithTheAnswer()throws Exception {
+    @Test void retiredHelpfulVoteEndpointIsUnavailable()throws Exception {
         var author=member("MEMBER");var reader=member("MEMBER");String q=question(author);
         var answer=answer(author,q,"Beğeni davranışını doğrulayan topluluk cevabı");String id=answer.get("id").asText(),path="/api/answers/"+id+"/like";
-        mvc.perform(get(path)).andExpect(status().isUnauthorized());
-        mvc.perform(write("PUT",path,reader,Map.of("liked",true))).andExpect(status().isOk()).andExpect(jsonPath("$.liked").value(true)).andExpect(jsonPath("$.likeCount").value(1));
-        mvc.perform(write("PUT",path,reader,Map.of("liked",true))).andExpect(status().isOk()).andExpect(jsonPath("$.likeCount").value(1));
-        mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].likeCount").value(1));
-        mvc.perform(write("PUT",path,reader,Map.of("liked",false))).andExpect(status().isOk()).andExpect(jsonPath("$.likeCount").value(0));
-        mvc.perform(write("PUT","/api/answers/"+id+"/status",author,Map.of("deleted",true,"version",0))).andExpect(status().isOk());
+        mvc.perform(write("PUT",path,reader,Map.of("liked",true))).andExpect(status().isForbidden());
         mvc.perform(get(path).cookie(reader.cookie())).andExpect(status().isNotFound());
-        assertThat(jdbc.queryForObject("SELECT count(*) FROM answer_likes WHERE answer_id=?",Long.class,UUID.fromString(id))).isEqualTo(1);
+        mvc.perform(get("/api/questions/"+q+"/answers")).andExpect(jsonPath("$.items[0].likeCount").doesNotExist());
     }
     @Test void questionReportsAreUniqueAndManagersCanResolveThemWithVersionChecks()throws Exception {
         var author=member("MEMBER");var reporter=member("MEMBER");var manager=actor("MANAGER");String q=question(author),path="/api/questions/"+q+"/reports";

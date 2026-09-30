@@ -18,6 +18,8 @@ PostgreSQL, Mailpit ve API’yi Docker’da çalıştırmak için:
 ./run.sh --status
 ```
 
+Backend değişikliklerinden sonra `./run.sh --docker` komutunu tekrar çalıştırmak API imajını yeniden derler ve günceller. Yerel Compose API portunu LAN erişimine açar; aynı Wi-Fi ağındaki telefon `http://BILGISAYAR_LAN_IP:8080` üzerinden bağlanabilir. PostgreSQL ve Mailpit yalnız bilgisayardan erişilebilir. Hostta `./run.sh` açıksa Docker moduna geçmeden önce o süreci durdur.
+
 Frontend bu Compose dosyasının parçası değildir. Web reposunda ayrıca `npm run dev` çalıştırılır. `./run.sh --stop` servisleri veriyi koruyarak durdurur; `./run.sh --help` seçenekleri gösterir.
 
 - API: <http://localhost:8080/api/health>

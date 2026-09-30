@@ -6,4 +6,6 @@ import com.tanidikvar.api.auth.security.SessionPrincipal;import com.tanidikvar.a
  @PutMapping public EvaluationResponse save(@AuthenticationPrincipal SessionPrincipal user,@Valid @RequestBody EvaluationRequest request){return service.save(user.userId(),request);}
  @GetMapping public PageResponse<EvaluationResponse> list(@RequestParam UUID universityId,@RequestParam(required=false) UUID programId,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){return service.list(universityId,programId,page,size);}
  @GetMapping("/summary") public EvaluationSummaryResponse summary(@RequestParam UUID universityId,@RequestParam(required=false) UUID programId){return service.summary(universityId,programId);}
+ @GetMapping("/criteria") public java.util.List<EvaluationCriterionResponse> criteria(@RequestParam UUID universityId,@RequestParam(required=false) UUID programId){return service.criteria(universityId,programId);}
+ @GetMapping("/my-ratings") public java.util.List<EvaluationRatingResponse> myRatings(@AuthenticationPrincipal SessionPrincipal user,@RequestParam UUID universityId,@RequestParam(required=false) UUID programId){return service.myRatings(user.userId(),universityId,programId);}
 }

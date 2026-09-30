@@ -11,6 +11,6 @@ public class AnswerMapper {
                 a.anonymous()?"Anonim Tanıdık":visible?a.authorName():"Katılımcı",
                 visible?a.avatarFileId():null,visible?a.educationStatus():null,a.anonymous()||visible&&a.activeAdmin(),
                 visible?a.universityName():null,visible?a.departmentName():null,"COMMUNITY",a.body(),a.publishedAt(),
-                a.editedAt(),a.deletedAt(),a.moderatedAt(),a.likeCount(),a.version(),a.authorId().equals(viewer),a.anonymous());
+                a.editedAt(),a.deletedAt(),a.moderatedAt(),a.version(),a.authorId().equals(viewer),a.anonymous());
     }
 }

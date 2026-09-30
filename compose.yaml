@@ -41,7 +41,7 @@ services:
       MAIL_FROM: ${MAIL_FROM:-noreply@tanidikvar.local}
       STORAGE_DIRECTORY: /app/storage
     ports:
-      - "127.0.0.1:${SERVER_PORT:-8080}:8080"
+      - "0.0.0.0:${SERVER_PORT:-8080}:8080"
     volumes:
       - api_storage:/app/storage
     depends_on:

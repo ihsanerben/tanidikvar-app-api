@@ -22,7 +22,7 @@ public class AnswerDetailService {
   }
   var value=tanidik.find(id).orElseThrow(this::missing);questions.requireReadable(value.questionId());
   if(value.deletedAt()!=null||value.moderatedAt()!=null)throw missing();var a=tanidikMapper.toResponse(value,viewer);
-  return new AnswerResponse(a.id(),a.questionId(),a.authorId(),a.authorName(),a.avatarFileId(),a.educationStatus(),a.activeAdmin(),a.universityName(),a.departmentName(),"TANIDIK",a.body(),a.publishedAt(),a.editedAt(),a.deletedAt(),a.moderatedAt(),a.likeCount(),a.version(),a.owned(),a.anonymous());
+  return new AnswerResponse(a.id(),a.questionId(),a.authorId(),a.authorName(),a.avatarFileId(),a.educationStatus(),a.activeAdmin(),a.universityName(),a.departmentName(),"TANIDIK",a.body(),a.publishedAt(),a.editedAt(),a.deletedAt(),a.moderatedAt(),a.version(),a.owned(),a.anonymous());
  }
  private DomainException missing(){return new DomainException(404,"NOT_FOUND","Yorum bulunamadı.");}
 }

@@ -1,5 +1,6 @@
 package com.tanidikvar.api.profile.controller;
 import com.tanidikvar.api.profile.dto.PublicProfileResponse;
+import com.tanidikvar.api.profile.dto.ProfileContributionSummaryResponse;
 import com.tanidikvar.api.profile.service.PublicProfileService;
 import com.tanidikvar.api.answer.dto.AdminAnswerResponse;
 import com.tanidikvar.api.answer.service.AdminAnswerService;
@@ -16,6 +17,7 @@ public class PublicProfileController {
  private final AnswerService answers;
  public PublicProfileController(PublicProfileService profiles,AdminAnswerService adminAnswers,AnswerService answers){this.profiles=profiles;this.adminAnswers=adminAnswers;this.answers=answers;}
  @GetMapping("/{id}") public PublicProfileResponse get(@PathVariable UUID id){return profiles.get(id);}
+ @GetMapping("/{id}/contribution-summary") public ProfileContributionSummaryResponse contributionSummary(@PathVariable UUID id){return profiles.contributionSummary(id);}
  @GetMapping("/{id}/comments/community") public PageResponse<AnswerResponse> communityHistory(@PathVariable UUID id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){profiles.get(id);return answers.publicHistory(id,page,size);}
  @GetMapping("/{id}/comments/admin") public PageResponse<AdminAnswerResponse> adminHistory(@PathVariable UUID id,@RequestParam(defaultValue="0") int page,@RequestParam(defaultValue="20") int size){profiles.get(id);return adminAnswers.history(id,page,size);}
 }

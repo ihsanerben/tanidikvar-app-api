@@ -17,7 +17,10 @@ public final class MobileTransport {
     }
     public static boolean csrfExempt(HttpServletRequest request) {
         if (!cookieFree(request)) return false;
-        if (request.getRequestURI().startsWith("/api/auth/mobile/"))
+        // The public contact form also supports anonymous native clients. Only
+        // JSON POSTs without authentication cookies may use this transport.
+        if (request.getRequestURI().startsWith("/api/auth/mobile/") ||
+                ("POST".equals(request.getMethod()) && "/api/contact".equals(request.getRequestURI())))
             return request.getContentType() != null &&
                     request.getContentType().split(";")[0].trim().equalsIgnoreCase("application/json");
         return request.getRequestURI().startsWith("/api/") && bearer(request) != null;

@@ -1,1 +1,1 @@
-package com.tanidikvar.api.discussion.dto;import java.time.Instant;import java.util.UUID;public record AnswerCommentResponse(UUID id,UUID answerId,UUID authorId,String authorName,String body,Instant createdAt,long version,UUID replyToId){}
+package com.tanidikvar.api.discussion.dto;import java.time.Instant;import java.util.UUID;public record AnswerCommentResponse(UUID id,UUID answerId,UUID authorId,String authorName,String body,Instant createdAt,long version,UUID replyToId,Instant editedAt){}
